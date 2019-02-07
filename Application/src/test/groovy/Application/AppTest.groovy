@@ -16,4 +16,19 @@ class AppTest extends Specification {
         then:
         result != null
     }
+
+    def "Logger initialization"() {
+
+        given: "An instance of logger and a known ID"
+        Logger logr = new Logger(101)
+
+        when:
+        def ret = logr.Initialize()
+
+        then:
+        ret == 1
+
+        where:
+            
+    }
 }
