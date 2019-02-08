@@ -21,9 +21,11 @@ enum eLoggerErrors{
 public class Logger {
 
     private String              vFileName;
+    private int                 vIndent;
     private RandomAccessFile    vFile;
     private boolean             vIntialized;
     private Integer             vCID;  // the client ID
+    private static final String endOfLine = "\r\n";
 
     /**
      * Creates the logger interface for the application.
@@ -38,6 +40,7 @@ public class Logger {
         vFileName   = "log_peer_" + Integer.toString(pClientId) + ".log";
         vFile       = null;
         vCID        = pClientId;
+        vIndent     = 0;
     }
 
     /**
@@ -51,13 +54,14 @@ public class Logger {
      */
     public eLoggerErrors Initialize ()
     {
-        int         count    = 1;
+        int         count   = 1;
         Path        srcPath;
         Path        targetPath;
         FileChannel fChannel;
         FileLock    fLock;
         File        newFile;
         String      newFileName;
+
 
         // re initialization is not allowed
         if (vFile != null || vIntialized)
@@ -163,5 +167,48 @@ public class Logger {
         vFile = null;
 
         return retStatus;
+    }
+
+    public eLoggerErrors Log(String pLogMessage){
+        eLoggerErrors ret;
+
+        ret = CheckInitializedClosed();
+
+        if (ret!= eLoggerErrors.E_LE_SUCCESS)
+            return ret;
+
+        try {
+            if (vIndent > 0)
+            {
+                String indent = "";
+                for (int iter = 0; iter < vIndent; iter++){
+                    indent += "\t";
+                }
+                vFile.write(indent.getBytes());
+                indent = "\n"+indent;
+
+                pLogMessage = pLogMessage.replace("\n", indent);
+            }
+            vFile.write(pLogMessage.getBytes());
+            vFile.write(endOfLine.getBytes());
+        }
+        catch (IOException e){
+            System.out.println("Encountered exception while logging.");
+            System.out.println(e.getMessage());
+            return eLoggerErrors.E_LE_FAILED;
+        }
+
+        return  ret;
+    }
+
+    public void Indent (boolean pForward, int pCount){
+
+        if (pCount < 0 || pCount < vIndent)
+            return;
+
+        if (pForward)
+            vIndent += pCount;
+        else
+            vIndent -= pCount;
     }
 }
