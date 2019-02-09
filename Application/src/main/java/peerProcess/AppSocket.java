@@ -1,4 +1,4 @@
-package Application;
+package peerProcess;
 
 import java.io.IOException;
 import java.net.InetAddress;

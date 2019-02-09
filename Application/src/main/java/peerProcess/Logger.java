@@ -1,4 +1,4 @@
-package Application;
+package peerProcess;
 
 import java.io.File;
 import java.io.IOException;
@@ -35,9 +35,9 @@ public class Logger {
      *
      * @param pClientId     The unique identification number of the client.
      */
-    public Logger (int pClientId){
+    Logger(int pClientId){
         vIntialized = false;
-        vFileName   = "log_peer_" + Integer.toString(pClientId) + ".log";
+        vFileName   = "log_peer_" + pClientId + ".log";
         vFile       = null;
         vCID        = pClientId;
         vIndent     = 0;
@@ -52,7 +52,7 @@ public class Logger {
      *
      * @return The returned value is from the @eLoggerErrors enum and denotes the end-result state for the requested operation.
      */
-    public eLoggerErrors Initialize ()
+    eLoggerErrors Initialize()
     {
         int         count   = 1;
         Path        srcPath;
@@ -145,7 +145,7 @@ public class Logger {
      *
      * @return The returned value is from the @eLoggerErrors enum and denotes the end-result state for the requested operation.
      */
-    public eLoggerErrors Close()
+    eLoggerErrors Close()
     {
 
         eLoggerErrors retStatus;
@@ -169,7 +169,7 @@ public class Logger {
         return retStatus;
     }
 
-    public eLoggerErrors Log(String pLogMessage){
+    eLoggerErrors Log(String pLogMessage){
         eLoggerErrors ret;
 
         ret = CheckInitializedClosed();
@@ -201,7 +201,7 @@ public class Logger {
         return  ret;
     }
 
-    public void Indent (boolean pForward, int pCount){
+    void Indent (boolean pForward, int pCount){
 
         if (pCount < 0 || pCount < vIndent)
             return;
