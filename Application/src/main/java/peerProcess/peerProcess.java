@@ -30,6 +30,7 @@ public class peerProcess {
         String      HostName;
         int         PortNumber;
         boolean     HasFile;
+        int[]       FileState = null;
     }
 
     private peerProcess (int pPeerId) {
@@ -139,12 +140,27 @@ public class peerProcess {
 
             while (fileScanner.hasNext()){
 
+                int     arraysize;
+
                 PeerConfigurationData peerData = new PeerConfigurationData();
 
                 peerData.PeerId     = fileScanner.nextInt();
                 peerData.HostName   = fileScanner.next();
                 peerData.PortNumber = fileScanner.nextInt();
                 peerData.HasFile    = (fileScanner.nextInt() == 1);
+
+                arraysize = FileSize/Integer.SIZE + ((FileSize%Integer.SIZE > 0)?1:0);
+
+                peerData.FileState  = new int[arraysize];
+
+                for (int iter = 0; iter < arraysize; iter++){
+
+                    // if the application has full file it will initialize its file state as all bit set to 1
+                    if(peerData.PeerId == this.PeerId && peerData.HasFile)
+                        peerData.FileState[iter] = -1;
+                    else // the value is yer to be discovered by the application protocol
+                        peerData.FileState[iter] = 0;
+                }
 
                 PeerList.add(peerData);
             }
