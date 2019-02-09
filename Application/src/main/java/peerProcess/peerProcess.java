@@ -22,7 +22,8 @@ public class peerProcess {
     public int              PieceSize;
     public Logger           LogFile;
     public int              PeerId;
-    public ArrayList        PeerList;
+
+    public ArrayList<PeerConfigurationData>        PeerList;
 
     class PeerConfigurationData {
         int         PeerId;
@@ -31,7 +32,7 @@ public class peerProcess {
         boolean     HasFile;
     }
 
-    peerProcess (int pPeerId) {
+    private peerProcess (int pPeerId) {
 
         FileSize  = 0;
         PieceSize = 0;
@@ -43,18 +44,15 @@ public class peerProcess {
         UnchockingInterval          = 0;
         PreferredNeighbourCount     = 0;
 
-        PeerList = new ArrayList();
+        PeerList = new ArrayList<PeerConfigurationData>();
     }
 
-    boolean Initialize () {
+    private boolean Initialize () {
 
         if (!ReadConfigurations())
             return false;
 
-        if (Logger.GetLogger().Initialize(PeerId) != eLoggerErrors.E_LE_SUCCESS)
-            return false;
-
-        return true;
+        return (Logger.GetLogger().Initialize(PeerId) == eLoggerErrors.E_LE_SUCCESS);
     }
 
     /**
@@ -65,7 +63,6 @@ public class peerProcess {
     private boolean ReadConfigurations () {
 
         Scanner     fileScanner;
-        int         peerId;
         String      configLabel;
 
         if (Files.notExists(Paths.get (ConfigFileName))){
@@ -144,14 +141,10 @@ public class peerProcess {
 
                 PeerConfigurationData peerData = new PeerConfigurationData();
 
-                peerData.PeerId   = fileScanner.nextInt();
-                peerData.HostName = fileScanner.next();
+                peerData.PeerId     = fileScanner.nextInt();
+                peerData.HostName   = fileScanner.next();
                 peerData.PortNumber = fileScanner.nextInt();
-
-                if (fileScanner.nextInt() == 1)
-                    peerData.HasFile    = true;
-                else
-                    peerData.HasFile    = false;
+                peerData.HasFile    = (fileScanner.nextInt() == 1);
 
                 PeerList.add(peerData);
             }
@@ -178,7 +171,5 @@ public class peerProcess {
             return;
 
         //the application can go multithreaded beyond this point
-
-        return;
     }
 }

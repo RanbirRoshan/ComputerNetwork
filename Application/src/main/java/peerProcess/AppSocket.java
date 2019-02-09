@@ -7,10 +7,9 @@ import java.net.UnknownHostException;
 
 public class AppSocket {
 
-    Socket      vSocket;
-    InetAddress vHostAdd;
-    Integer     vPortNumber;
-    String      vHostString;
+    private Socket      vSocket;
+    private Integer     vPortNumber;
+    private String      vHostString;
 
     /**
      * Constructor for the class
@@ -33,10 +32,17 @@ public class AppSocket {
      * @throws UnknownHostException
      * @throws IOException
      */
-    public eSocketReturns Initialize () throws UnknownHostException, IOException
+    public eSocketReturns Initialize ()
     {
-        vHostAdd = InetAddress.getByName(vHostString);
-        vSocket = new Socket(vHostAdd, vPortNumber);
+        try {
+            vSocket = new Socket(InetAddress.getByName(vHostString), vPortNumber);
+        }
+        catch (IOException ex){
+            System.out.println ("*******************EXCEPTION*******************");
+            System.out.println ("IOException occurred while creating socket.");
+            return eSocketReturns.E_SOCRET_FAILED;
+        }
+
         return eSocketReturns.E_SOCRET_SUCCESS;
     }
 

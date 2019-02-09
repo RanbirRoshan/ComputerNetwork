@@ -267,16 +267,13 @@ public class Logger {
             vFile.write(pLogMessage.getBytes());
             gMutexlock.release();
         }
-        catch (IOException e){
+        catch (IOException | InterruptedException e){
             System.out.println ("*******************EXCEPTION*******************");
-            System.out.println("Encountered exception while logging.");
+            if (e instanceof IOException)
+                System.out.println("Encountered exception while logging.");
+            else
+                System.out.println("An interrupt was received.");
             System.out.println(e.getMessage());
-            return eLoggerErrors.E_LE_FAILED;
-        }
-        catch (InterruptedException ex){
-            System.out.println ("*******************EXCEPTION*******************");
-            System.out.println("An interrupt was received.");
-            System.out.println(ex.getMessage());
             return eLoggerErrors.E_LE_FAILED;
         }
 
