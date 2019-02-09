@@ -33,7 +33,6 @@ public class Logger {
     private static final String vEndOfLine = "\r\n";
 
     // global for the class
-    private static Integer      gCID;  // the client ID
     private static Semaphore    gMutexlock = new Semaphore(1);
     private static Logger       gLogger = null;
     private static int          gLockKey;
@@ -83,7 +82,6 @@ public class Logger {
         vInitialized = true;
 
         vFileName   = "log_peer_" + pClientId + ".log";
-        gCID        = pClientId;
 
         srcPath  = Paths.get (vFileName);
         srcPath = srcPath.toAbsolutePath();
@@ -92,7 +90,7 @@ public class Logger {
             boolean retry = true;
             do {
 
-                newFileName = String.format("log_peer_%s_%d.log", gCID.toString(), count);
+                newFileName = String.format("log_peer_%d_%d.log", pClientId, count);
 
                 targetPath = Paths.get (newFileName);
 
@@ -103,6 +101,7 @@ public class Logger {
                         Files.move(srcPath, targetPath);
                     }
                     catch (Exception e){
+                        System.out.println ("*******************EXCEPTION*******************");
                         System.out.println("Old log file exists. Unable to rename it to new file");
                         System.out.println(e.getMessage());
                         return eLoggerErrors.E_LE_FAILED;
@@ -134,6 +133,8 @@ public class Logger {
         }
         catch (IOException e)
         {
+            System.out.println ("*******************EXCEPTION*******************");
+            System.out.println (e.getMessage());
             return eLoggerErrors.E_LE_FAILED;
         }
 
@@ -267,11 +268,13 @@ public class Logger {
             gMutexlock.release();
         }
         catch (IOException e){
+            System.out.println ("*******************EXCEPTION*******************");
             System.out.println("Encountered exception while logging.");
             System.out.println(e.getMessage());
             return eLoggerErrors.E_LE_FAILED;
         }
         catch (InterruptedException ex){
+            System.out.println ("*******************EXCEPTION*******************");
             System.out.println("An interrupt was received.");
             System.out.println(ex.getMessage());
             return eLoggerErrors.E_LE_FAILED;
