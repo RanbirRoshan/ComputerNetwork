@@ -51,9 +51,7 @@ public class peerProcess {
         if (!ReadConfigurations())
             return false;
 
-        LogFile = new Logger(PeerId);
-
-        if (LogFile.Initialize() != eLoggerErrors.E_LE_SUCCESS)
+        if (Logger.GetLogger().Initialize(PeerId) != eLoggerErrors.E_LE_SUCCESS)
             return false;
 
         return true;
@@ -178,6 +176,8 @@ public class peerProcess {
 
         if (!myApp.Initialize())
             return;
+
+        //the application can go multithreaded beyond this point
 
         return;
     }
