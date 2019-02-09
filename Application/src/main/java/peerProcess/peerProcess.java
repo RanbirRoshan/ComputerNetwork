@@ -4,48 +4,56 @@
 package peerProcess;
 
 import java.io.FileNotFoundException;
+import java.io.IOException;
+import java.net.InetAddress;
+import java.net.ServerSocket;
+import java.net.Socket;
+import java.net.UnknownHostException;
 import java.nio.file.Files;
 import java.nio.file.Paths;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Scanner;
+import java.text.SimpleDateFormat;
+import java.util.*;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 public class peerProcess {
 
-    public final String     ConfigFileName  = "Common.cfg";
-    public final String     PeerInfoFile    = "PeerInfo.cfg";
-    public int              PreferredNeighbourCount;
-    public int              UnchockingInterval;
-    public int              OptimisticUnchokingInterval;
-    public String           FileName;
-    public int              FileSize;
-    public int              PieceSize;
-    public Logger           LogFile;
-    public int              PeerId;
+    private final String    ConfigFileName  = "Common.cfg";
+    private final String    PeerInfoFile    = "PeerInfo.cfg";
 
-    public ArrayList<PeerConfigurationData>        PeerList;
+    private int             PreferredNeighbourCount;
+    private int             UnchockingInterval;
+    private int             OptimisticUnchokingInterval;
+    private String          FileName;
+    private int             FileSize;
+    private int             PieceSize;
+    private AtomicBoolean   TaskComplete;
+    private int             MyPeerId;
+
+    private LinkedHashMap <Integer, PeerConfigurationData> PeerMap;
 
     class PeerConfigurationData {
-        int         PeerId;
+        Integer     PeerId;
         String      HostName;
         int         PortNumber;
         boolean     HasFile;
+        boolean     HasFullFile;
         int[]       FileState = null;
     }
 
     private peerProcess (int pPeerId) {
 
-        FileSize  = 0;
-        PieceSize = 0;
-        PeerId    = pPeerId;
-        FileName  = null;
-        LogFile   = null;
+        FileSize    = 0;
+        PieceSize   = 0;
+        MyPeerId    = pPeerId;
+        FileName    = null;
+
+        TaskComplete    = new AtomicBoolean(false);
 
         OptimisticUnchokingInterval = 0;
         UnchockingInterval          = 0;
         PreferredNeighbourCount     = 0;
 
-        PeerList = new ArrayList<PeerConfigurationData>();
+        PeerMap = new LinkedHashMap <Integer, PeerConfigurationData>();
     }
 
     private boolean Initialize () {
@@ -53,7 +61,12 @@ public class peerProcess {
         if (!ReadConfigurations())
             return false;
 
-        return (Logger.GetLogger().Initialize(PeerId) == eLoggerErrors.E_LE_SUCCESS);
+        if (Logger.GetLogger().Initialize(MyPeerId) != eLoggerErrors.E_LE_SUCCESS)
+            return false;
+
+        Logger.GetLogger().Log ("Program start time: " + new SimpleDateFormat ("mm/dd/yyyy HH:mm:ss").format ((Calendar.getInstance().getTime())));
+
+        return true;
     }
 
     /**
@@ -140,7 +153,8 @@ public class peerProcess {
 
             while (fileScanner.hasNext()){
 
-                int     arraysize;
+                int     arraySize;
+                int     pktCount;
 
                 PeerConfigurationData peerData = new PeerConfigurationData();
 
@@ -149,20 +163,26 @@ public class peerProcess {
                 peerData.PortNumber = fileScanner.nextInt();
                 peerData.HasFile    = (fileScanner.nextInt() == 1);
 
-                arraysize = FileSize/Integer.SIZE + ((FileSize%Integer.SIZE > 0)?1:0);
+                pktCount = FileSize/PieceSize + ((FileSize%PieceSize > 0)?1:0);
+                arraySize = pktCount/Integer.SIZE + ((pktCount%Integer.SIZE > 0)?1:0);
 
-                peerData.FileState  = new int[arraysize];
+                peerData.FileState  = new int[arraySize];
 
-                for (int iter = 0; iter < arraysize; iter++){
+                for (int iter = 0; iter < arraySize; iter++){
 
                     // if the application has full file it will initialize its file state as all bit set to 1
-                    if(peerData.PeerId == this.PeerId && peerData.HasFile)
+                    if(peerData.PeerId == MyPeerId && peerData.HasFile) {
                         peerData.FileState[iter] = -1;
-                    else // the value is yer to be discovered by the application protocol
+                        peerData.HasFullFile     = true;
+                    }
+                    else {// the value is yer to be discovered by the application protocol
                         peerData.FileState[iter] = 0;
+                        peerData.HasFullFile = false;
+                    }
                 }
 
-                PeerList.add(peerData);
+                // adding the peer information to a list fou later use
+                PeerMap.put(peerData.PeerId, peerData);
             }
         }
         catch (FileNotFoundException ex){
@@ -187,5 +207,140 @@ public class peerProcess {
             return;
 
         //the application can go multithreaded beyond this point
+        myApp.Execute ();
+
+        myApp.CleanUp();
+    }
+
+    private void CleanUp ()
+    {
+        Logger.GetLogger().Log ("Program termination time: " + new SimpleDateFormat ("mm/dd/yyyy HH:mm:ss").format ((Calendar.getInstance().getTime())));
+        Logger.GetLogger().Close ();
+    }
+
+    /**
+     * The function checks if all the peers have got the full file
+     *
+     * @return true if all peers have full file, else false
+     */
+    public boolean AllPeersHaveFile (){
+
+        Iterator iter = PeerMap.entrySet().iterator();
+
+        while (iter.hasNext()){
+
+            Map.Entry  mapPair = (Map.Entry)iter.next();
+
+            // if any of the peer does not have full file return false
+            if (((PeerConfigurationData)mapPair.getValue()).HasFile == false)
+                return  false;
+        }
+
+        return true;
+    }
+
+    public boolean ConnectToKnownHosts()
+    {
+        Iterator    iter = PeerMap.entrySet().iterator();
+        Socket      newSocket;
+
+        while (iter.hasNext()){
+
+            Map.Entry  mapPair = (Map.Entry)iter.next();
+
+            // the other socket after this are responsible for initiating connect to this instance
+            if (((PeerConfigurationData)mapPair.getValue()).PeerId == MyPeerId)
+                break;
+
+            try {
+                newSocket = new Socket(InetAddress.getByName(((PeerConfigurationData) mapPair.getValue()).HostName), ((PeerConfigurationData) mapPair.getValue()).PortNumber);
+                new AppController (newSocket).start();
+
+            }
+            catch (IOException ex){
+                System.out.println ("*******************EXCEPTION*******************");
+                System.out.println ("IOException occurred while creating socket.");
+                System.out.println (ex.getMessage());
+            }
+
+        }
+
+        return true;
+    }
+
+    /**
+     * Initiates all the helping threads needed by the application
+     *
+     * <p>
+     *     To keep the wait time on the server thread minimum we are spawning other threads to perform other routine maintenance work
+     * </p>
+     *
+     * @return true on success and false on failure
+     */
+    private boolean InitiateHelperThreads ()
+    {
+        Runnable routineCheck;
+
+        if (ConnectToKnownHosts()== false)
+            return false;
+
+        routineCheck = new Runnable() {
+            @Override
+            public void run() {
+
+                while (true){
+
+                    try {
+                        Thread.sleep(2000);
+                    }
+                    catch (InterruptedException ex)
+                    {
+                        System.out.println ("*******************EXCEPTION*******************");
+                        System.out.println ("IOException occurred while checking for task completion.");
+                        System.out.println (ex.getMessage());
+                        break;
+                    }
+
+                    if (AllPeersHaveFile()){
+                        TaskComplete.set (true);
+                        break;
+                    }
+                }
+            }
+        };
+
+        new Thread(routineCheck).start();
+
+        return true;
+    }
+
+    /**
+     * The actual operations starts here
+     */
+    private void Execute ()
+    {
+        ServerSocket    listeningSocket;
+        Socket          newConn;
+
+        if (!InitiateHelperThreads ())
+            return;
+
+        try {
+            listeningSocket = new ServerSocket(PeerMap.get(MyPeerId).PortNumber);
+
+            // the server would keep listening
+            while (true){
+                new AppController (listeningSocket.accept()).start();
+
+                if(TaskComplete.get())
+                    break;
+            }
+        }
+        catch (IOException ex){
+            System.out.println ("*******************EXCEPTION*******************");
+            System.out.println ("IOException occurred while closing a connection.");
+            System.out.println (ex.getMessage());
+            return;
+        }
     }
 }
