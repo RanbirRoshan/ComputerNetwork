@@ -50,10 +50,10 @@ public class Logger {
 
     static Logger GetLogger ()
     {
-        if (gLogger != null)
-            return gLogger;
+        if (gLogger == null)
+            gLogger = new Logger();
 
-        return new Logger();
+        return gLogger;
     }
 
     /**
