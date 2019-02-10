@@ -3,7 +3,7 @@ package peerProcess;
 /**
  * enum to depict the possible error and return states from the Logger Class
  */
-enum eLoggerErrors{
+public enum eLoggerErrors{
     E_LE_SUCCESS,
     //E_LE_UNKNOWN,
     E_LE_ALREADY_INITIALIZED,

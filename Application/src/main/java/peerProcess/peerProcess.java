@@ -13,6 +13,7 @@ import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.text.SimpleDateFormat;
 import java.util.*;
+import java.lang.Thread;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 public class peerProcess {
@@ -29,7 +30,7 @@ public class peerProcess {
     private AtomicBoolean   TaskComplete;
     private int             MyPeerId;
 
-    private LinkedHashMap <Integer, PeerConfigurationData> PeerMap;
+    static LinkedHashMap <Integer, PeerConfigurationData> PeerMap;
 
     class PeerConfigurationData {
         Integer     PeerId;
@@ -223,26 +224,23 @@ public class peerProcess {
      *
      * @return true if all peers have full file, else false
      */
-    public boolean AllPeersHaveFile (){
+    private boolean AllPeersHaveFile (){
 
-        Iterator iter = PeerMap.entrySet().iterator();
-
-        while (iter.hasNext()){
-
-            Map.Entry  mapPair = (Map.Entry)iter.next();
+        for (Map.Entry<Integer, PeerConfigurationData> mapPair : PeerMap.entrySet()) {
 
             // if any of the peer does not have full file return false
-            if (((PeerConfigurationData)mapPair.getValue()).HasFile == false)
-                return  false;
+            if (!mapPair.getValue().HasFile)
+                return false;
         }
 
         return true;
     }
 
-    public boolean ConnectToKnownHosts()
+    private boolean ConnectToKnownHosts()
     {
         Iterator    iter = PeerMap.entrySet().iterator();
         Socket      newSocket;
+        Thread      newThread;
 
         while (iter.hasNext()){
 
@@ -254,8 +252,13 @@ public class peerProcess {
 
             try {
                 newSocket = new Socket(InetAddress.getByName(((PeerConfigurationData) mapPair.getValue()).HostName), ((PeerConfigurationData) mapPair.getValue()).PortNumber);
-                new AppController (newSocket).start();
 
+                newThread = new AppController (newSocket, MyPeerId);
+
+                // thread is marked as daemon. Only the main thread is non daemon. But is blocked for all task to complete. If all task is complete we quit :)
+                newThread.setDaemon(true);
+
+                newThread.start();
             }
             catch (IOException ex){
                 System.out.println ("*******************EXCEPTION*******************");
@@ -274,44 +277,25 @@ public class peerProcess {
      * <p>
      *     To keep the wait time on the server thread minimum we are spawning other threads to perform other routine maintenance work
      * </p>
-     *
-     * @return true on success and false on failure
      */
-    private boolean InitiateHelperThreads ()
+    private void InitiateCompletionWait ()
     {
-        Runnable routineCheck;
+        while (true){
 
-        if (ConnectToKnownHosts()== false)
-            return false;
-
-        routineCheck = new Runnable() {
-            @Override
-            public void run() {
-
-                while (true){
-
-                    try {
-                        Thread.sleep(2000);
-                    }
-                    catch (InterruptedException ex)
-                    {
-                        System.out.println ("*******************EXCEPTION*******************");
-                        System.out.println ("IOException occurred while checking for task completion.");
-                        System.out.println (ex.getMessage());
-                        break;
-                    }
-
-                    if (AllPeersHaveFile()){
-                        TaskComplete.set (true);
-                        break;
-                    }
-                }
+            try {
+                Thread.sleep(2000);
             }
-        };
+            catch (InterruptedException ex) {
+                System.out.println ("*******************EXCEPTION*******************");
+                System.out.println ("IOException occurred while checking for task completion.");
+                System.out.println (ex.getMessage());
+            }
 
-        new Thread(routineCheck).start();
-
-        return true;
+            if (AllPeersHaveFile()){
+                TaskComplete.set (true);
+                break;
+            }
+        }
     }
 
     /**
@@ -319,28 +303,47 @@ public class peerProcess {
      */
     private void Execute ()
     {
-        ServerSocket    listeningSocket;
-        Socket          newConn;
+        Runnable    listenerTask;
+        Thread      listenerThread;
 
-        if (!InitiateHelperThreads ())
-            return;
+        listenerTask = new Runnable() {
 
-        try {
-            listeningSocket = new ServerSocket(PeerMap.get(MyPeerId).PortNumber);
+            public void run() {
+                Thread      noob;
 
-            // the server would keep listening
-            while (true){
-                new AppController (listeningSocket.accept()).start();
+                try {
+                    ServerSocket    listeningSocket;
+                    listeningSocket = new ServerSocket(PeerMap.get(MyPeerId).PortNumber);
 
-                if(TaskComplete.get())
-                    break;
+                    // the server would keep listening
+                    while (!TaskComplete.get()){
+
+                        noob = new AppController (listeningSocket.accept(), MyPeerId);
+
+                        noob.setDaemon(true);
+
+                        noob.start();
+                    }
+                }
+                catch (IOException ex){
+                    System.out.println ("*******************EXCEPTION*******************");
+                    System.out.println ("IOException occurred while closing a connection.");
+                    System.out.println (ex.getMessage());
+                }
             }
-        }
-        catch (IOException ex){
-            System.out.println ("*******************EXCEPTION*******************");
-            System.out.println ("IOException occurred while closing a connection.");
-            System.out.println (ex.getMessage());
+        };
+
+        listenerThread = new Thread(listenerTask, "peerProcessListner");
+
+        // listener thread is marked as daemon as if the main thread exits all task is complete so all threads except main thread are marked daemon
+        listenerThread.setDaemon(true);
+
+        listenerThread.start();
+
+        if (!ConnectToKnownHosts())
             return;
-        }
+
+        // wait till the task is actually completed i.e all peers have full file
+        InitiateCompletionWait ();
     }
 }
