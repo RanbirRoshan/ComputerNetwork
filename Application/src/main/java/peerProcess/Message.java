@@ -3,7 +3,7 @@ package peerProcess;
 import java.io.Serializable;
 
 public class Message implements Serializable {
-    int                 MessageLength;
+    private int         MessageLength;
     byte                OperationType;
 
     //the message class contributes only 1 byte to the overallMessageLength

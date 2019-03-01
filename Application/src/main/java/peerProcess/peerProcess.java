@@ -27,6 +27,7 @@ public class peerProcess {
     private int             PieceSize;
     private AtomicBoolean   TaskComplete;
     private int             MyPeerId;
+    public static final int BitPerBufVal = Integer.SIZE;
 
     static LinkedHashMap <Integer, PeerConfigurationData> PeerMap;
 
@@ -36,7 +37,7 @@ public class peerProcess {
         int         PortNumber;
         boolean     HasFile;
         boolean     HasFullFile;
-        byte[]      FileState = null;
+        int[]       FileState = null;
     }
 
     private peerProcess (int pPeerId) {
@@ -167,6 +168,7 @@ public class peerProcess {
 
                 int     arraySize;
                 int     pktCount;
+                int     lastblockval = 0;
 
                 PeerConfigurationData peerData = new PeerConfigurationData();
 
@@ -176,9 +178,19 @@ public class peerProcess {
                 peerData.HasFile    = (fileScanner.nextInt() == 1);
 
                 pktCount    = FileSize/PieceSize + ((FileSize%PieceSize > 0)?1:0);
-                arraySize   = pktCount/Byte.SIZE + ((pktCount%Byte.SIZE > 0)?1:0);
 
-                peerData.FileState  = new byte[arraySize];
+                if (pktCount%BitPerBufVal> 0) {
+
+                    // set the last few bits of the last block if they are not present in file it will prevent us from repeated checking if we have reached beyond the end
+                    for (int iter = BitPerBufVal  - pktCount%BitPerBufVal ; iter > 0; iter--)
+                        lastblockval = (lastblockval << 1) + 1;
+
+                    arraySize = pktCount / BitPerBufVal + 1;
+                } else {
+                    arraySize = pktCount / BitPerBufVal;
+                }
+
+                peerData.FileState  = new int[arraySize];
 
                 for (int iter = 0; iter < arraySize; iter++){
 
@@ -188,7 +200,8 @@ public class peerProcess {
                         peerData.HasFullFile     = true;
                     }
                     else {// the value is yer to be discovered by the application protocol
-                        peerData.FileState[iter] = 0;
+
+                        peerData.FileState[iter] = (iter + 1 == arraySize)?lastblockval:0;
                         peerData.HasFullFile = false;
                     }
                 }
@@ -275,7 +288,7 @@ public class peerProcess {
             try {
                 newSocket = new Socket(InetAddress.getByName(((PeerConfigurationData) mapPair.getValue()).HostName), ((PeerConfigurationData) mapPair.getValue()).PortNumber);
 
-                newThread = new AppController (newSocket, MyPeerId);
+                newThread = new AppController (newSocket, MyPeerId, true);
 
                 // thread is marked as daemon. Only the main thread is non daemon. But is blocked for all task to complete. If all task is complete we quit :)
                 newThread.setDaemon(true);
@@ -340,7 +353,7 @@ public class peerProcess {
                     // the server would keep listening
                     while (!TaskComplete.get()){
 
-                        noob = new AppController (listeningSocket.accept(), MyPeerId);
+                        noob = new AppController (listeningSocket.accept(), MyPeerId, false);
 
                         noob.setDaemon(true);
 

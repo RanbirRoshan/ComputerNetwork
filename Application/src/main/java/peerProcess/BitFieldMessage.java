@@ -1,15 +1,15 @@
 package peerProcess;
 
-public class BitFieldMessage extends Message {
+class BitFieldMessage extends Message {
 
-    byte[]  BitField;
+    int[]  BitField;
 
     BitFieldMessage(){
         // initializing the value in the parent class
         super(eOperationType.OPERATION_BITFIELD.GetVal());
     }
 
-    public void SetBitFieldInfo (byte[] pBitFieldInfo){
+    void SetBitFieldInfo (int[] pBitFieldInfo){
 
         BitField = pBitFieldInfo;
 

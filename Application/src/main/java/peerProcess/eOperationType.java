@@ -9,7 +9,7 @@ public enum eOperationType {
     OPERATION_HAVE          ((byte)4),
     OPERATION_BITFIELD      ((byte)5),
     OPERATION_REQUEST       ((byte)6),
-    OPERATION_FIELD         ((byte)7);
+    OPERATION_PIECE         ((byte)7);
 
     private final byte Value;
 

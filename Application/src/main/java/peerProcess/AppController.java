@@ -8,21 +8,32 @@ import java.util.Calendar;
 
 public class AppController extends Thread {
 
-    private Socket          ConnSocket;
-    private int             PeerId;
-    private int             ClientPeerId;
+    private Socket                      ConnSocket;
+    private int                         PeerId;
+    private int                         ClientPeerId;
+    private boolean                     MakesConnection;
+    private final static String         HandshakeHeader = "P2PFILESHARINGPROJ";
+
+    private peerProcess.PeerConfigurationData   ClientData;
+    private peerProcess.PeerConfigurationData   SelfData;
 
     private ObjectOutputStream   SocketOutStream;
     private ObjectInputStream    SocketInputStream;
 
-    AppController (Socket pSocket, int pPeerId)
-    {
-        ConnSocket       = pSocket;
-        PeerId           = pPeerId;
+    class ResponseOutput {
+        eSocketReturns      Error;
+        Message             Response;
     }
 
-    public void run ()
-    {
+    AppController (Socket pSocket, int pPeerId, boolean pMakesConnection) {
+        ConnSocket       = pSocket;
+        PeerId           = pPeerId;
+        ClientData       = null;
+        SelfData         = peerProcess.PeerMap.get(pPeerId);
+        MakesConnection  = pMakesConnection;
+    }
+
+    public void run () {
         if (!ConnSocket.isConnected()){
             System.out.println("A connection is not successful.");
             return;
@@ -51,6 +62,12 @@ public class AppController extends Thread {
                 return;
             }
 
+            // handshake is always followed by BitSetExchange
+            if (PerformFileOp () != eSocketReturns.E_SOCRET_SUCCESS){
+                Logger.GetLogger().Log(Calendar.getInstance().getTime().toString() + ": " + PeerId + " fails performing BitSet Excahnge with peer: " + ClientPeerId+" . THE PEER IS ABANDONED.");
+                return;
+            }
+
             Thread.sleep(10000);
 
             ConnSocket.close();
@@ -61,11 +78,167 @@ public class AppController extends Thread {
         }
     }
 
+    private eSocketReturns PerformFileOp () {
+        eSocketReturns ret;
+
+        // perform send receive activity
+        do {
+
+            ret = SendActivity ();
+
+            if (ret == eSocketReturns.E_SOCRET_SUCCESS)
+                ret = ReceiveAndActActivity ();
+
+            if (ret != eSocketReturns.E_SOCRET_SUCCESS)
+                return  ret;
+
+        } while (true);
+
+        //return eSocketReturns.E_SOCRET_SUCCESS;
+    }
+
+    private byte GetBitSetPos (int pValue){
+        int     val = ~pValue;
+        byte    ans = 0;
+
+        while (val != 0){
+            val = val >>> 1;
+            ans++;
+        }
+
+        return (byte)(peerProcess.BitPerBufVal - ans);
+    }
+
+    private eSocketReturns SendObj (Object pObj, String pFailureMsg){
+
+        try {
+            SocketOutStream.writeObject(pObj);
+            SocketOutStream.flush();
+        }
+        catch (IOException ex){
+            System.out.println (pFailureMsg);
+            System.out.println ("*******************EXCEPTION*******************");
+            System.out.println (ex.getMessage());
+            return  eSocketReturns.E_SOCRET_IO_EXCEPTION;
+        }
+
+        return  eSocketReturns.E_SOCRET_SUCCESS;
+    }
+
+    private ResponseOutput RecieveObj (String pFailureMsg){
+
+        ResponseOutput out = new ResponseOutput();
+
+        try {
+            out.Response = (Message) SocketInputStream.readObject();
+            out.Error    = eSocketReturns.E_SOCRET_SUCCESS;
+        }
+        catch (ClassNotFoundException | IOException ex){
+            System.out.println ("*******************EXCEPTION*******************");
+            System.out.println (pFailureMsg);
+            System.out.println (ex.getMessage());
+            out.Response = null;
+            out.Error = eSocketReturns.E_SOCRET_IO_EXCEPTION;
+        }
+
+        return out;
+    }
+
+    private eSocketReturns SendPieceRequest (int pPieceId){
+        RequestMessage msg = new RequestMessage();
+
+        msg.PieceNum = pPieceId;
+
+        return SendObj (msg, "IOException occurred while sending piece Request message.");
+    }
+
+    private eSocketReturns SendPieceResponse (int pPieceId){
+        PieceMessage msg = new PieceMessage();
+        byte[] data;
+
+        msg.PieceNum = pPieceId;
+        data = new byte[3];
+        data[0] = 99;
+        data [1] = 100;
+        data [2] = 101;
+
+        msg.SetPieceData(data);
+
+        return SendObj(msg, "IOException occurred while sending piece message.");
+    }
+
+    private eSocketReturns ProcessPieceRequest (RequestMessage pMsg){
+        if (pMsg.PieceNum < 0){
+            System.out.println ("*******************Error*******************");
+            System.out.println ("Piece Request With Invalid Content");
+            return eSocketReturns.E_SOCRET_UNKNOWN;
+        }
+        return SendPieceResponse (pMsg.PieceNum);
+    }
+
+    private eSocketReturns ProcessPieceResponse (PieceMessage pMsg){
+
+        if (pMsg.GetPieceData() == null || pMsg.PieceNum == -1){
+            System.out.println ("*******************Error*******************");
+            System.out.println ("Piece Response With Invalid Content");
+            return eSocketReturns.E_SOCRET_UNKNOWN;
+        }
+
+        // updating the bit value
+        SelfData.FileState[pMsg.PieceNum/peerProcess.BitPerBufVal] |= (1 << peerProcess.BitPerBufVal - pMsg.PieceNum%peerProcess.BitPerBufVal -1);
+
+        return  eSocketReturns.E_SOCRET_SUCCESS;
+    }
+
+    private eSocketReturns RecievePacket (){
+        ResponseOutput ret;
+
+        ret = RecieveObj("IOException occurred while de-serializing *** message.");
+
+        if (ret.Error != eSocketReturns.E_SOCRET_SUCCESS)
+            return ret.Error;
+
+        if (ret.Response.OperationType == eOperationType.OPERATION_PIECE.GetVal()){
+            return ProcessPieceResponse((PieceMessage) ret.Response);
+        } else if (ret.Response.OperationType == eOperationType.OPERATION_REQUEST.GetVal()){
+            return ProcessPieceRequest ((RequestMessage) ret.Response);
+        }
+
+        return eSocketReturns.E_SOCRET_FAILED;
+    }
+
+    private eSocketReturns SendActivity () {
+
+        int block_num = -1;
+        int packet_num;
+        int bit_num;
+
+        for (int iter = 0; iter < SelfData.FileState.length; iter++)
+        {
+            if (SelfData.FileState[iter] != -1){
+                block_num = iter;
+                break;
+            }
+        }
+
+        if (block_num == -1)
+            return eSocketReturns.E_SOCRET_SUCCESS;
+
+        bit_num = GetBitSetPos(SelfData.FileState[block_num]);
+
+        packet_num = (block_num * peerProcess.BitPerBufVal) + bit_num;
+
+        return SendPieceRequest (packet_num);
+    }
+
+    private eSocketReturns ReceiveAndActActivity () {
+        return RecievePacket();
+    }
+
     private eSocketReturns ProcessBitSetResponse (){
 
         BitFieldMessage                     bitFieldMsg;
         Message                             msg;
-        peerProcess.PeerConfigurationData   data;
 
         try {
             msg = (Message) SocketInputStream.readObject();
@@ -85,43 +258,37 @@ public class AppController extends Thread {
         // not thaw we have verified the message to be of right type we can cast it into our actual message structure
         bitFieldMsg = (BitFieldMessage)msg;
 
-        data = peerProcess.PeerMap.get(ClientPeerId);
+        ClientData = peerProcess.PeerMap.get(ClientPeerId);
 
         // the bit field file sate length should be same as the file iis same for all if they are not same we have some error in the system
-        if (bitFieldMsg.BitField.length != data.FileState.length){
+        if (bitFieldMsg.BitField.length != ClientData.FileState.length){
             System.out.println ("Error in BitField message exchange received Operation Type: " + msg.OperationType +" when expecting :" + eOperationType.OPERATION_BITFIELD);
             return eSocketReturns.E_SOCRET_FAILED;
         }
 
         // overwrite the current client file state info with the latest available info
-        data.FileState = bitFieldMsg.BitField;
+        ClientData.FileState = bitFieldMsg.BitField;
 
         return  eSocketReturns.E_SOCRET_SUCCESS;
     }
 
     private eSocketReturns PerformBitSetExchange (){
+        eSocketReturns ret;
 
         BitFieldMessage    msg = new BitFieldMessage();
 
         msg.SetBitFieldInfo(peerProcess.PeerMap.get(PeerId).FileState);
 
-        try {
-            SocketOutStream.writeObject(msg);
-            SocketOutStream.flush();
-        }
-        catch (IOException ex){
-            System.out.println ("*******************EXCEPTION*******************");
-            System.out.println ("IOException occurred while sending BitField message.");
-            System.out.println (ex.getMessage());
-            return  eSocketReturns.E_SOCRET_IO_EXCEPTION;
+        ret = SendObj(msg, "IOException occurred while sending BitField message.");
 
-        }
-        return  ProcessBitSetResponse();
+        if (ret == eSocketReturns.E_SOCRET_SUCCESS)
+            return  ProcessBitSetResponse();
+
+        return  ret;
     }
 
-    private eSocketReturns WaitAndProcessHandshakeResponse (String pHandshakeHeader) {
+    private eSocketReturns WaitAndProcessHandshakeResponse () {
 
-        int             responseProtocol;
         HandshakeMsg    msg;
 
         try {
@@ -134,7 +301,7 @@ public class AppController extends Thread {
             return  eSocketReturns.E_SOCRET_IO_EXCEPTION;
         }
 
-        if (!msg.GetHdrBuf().equals(pHandshakeHeader)){
+        if (!msg.GetHdrBuf().equals(HandshakeHeader)){
             Logger.GetLogger().Log("Handshake failed. Received invalid handshake header.");
             return eSocketReturns.E_SOCRET_FAILED;
         }
@@ -147,28 +314,25 @@ public class AppController extends Thread {
 
         ClientPeerId = msg.GetPeerId();
 
-        Logger.GetLogger().Log(Calendar.getInstance().getTime().toString() + ": " + PeerId + " makes a connection to " + ClientPeerId);
+        // logging as per log requirement specification
+        if (MakesConnection)
+            Logger.GetLogger().Log(Calendar.getInstance().getTime().toString() + ": " + PeerId + " makes a connection to " + ClientPeerId);
+        else
+            Logger.GetLogger().Log(Calendar.getInstance().getTime().toString() + ": " + PeerId + " is connected from " + ClientPeerId);
 
         return eSocketReturns.E_SOCRET_SUCCESS;
     }
 
-    private eSocketReturns PerformHandshake ()
-    {
-        try {
-            HandshakeMsg    msg;
-            final String    handshakeHeader = "P2PFILESHARINGPROJ";
+    private eSocketReturns PerformHandshake (){
+        eSocketReturns  ret;
+        HandshakeMsg    msg;
+        msg = new HandshakeMsg(HandshakeHeader, PeerId);
 
-            msg = new HandshakeMsg(handshakeHeader, PeerId);
-            SocketOutStream.writeObject(msg);
-            SocketOutStream.flush();
+        ret = SendObj(msg, "IOException occurred while serializing handshake message.");
 
-            return WaitAndProcessHandshakeResponse(handshakeHeader);
-        }
-        catch (IOException ex){
-            System.out.println ("*******************EXCEPTION*******************");
-            System.out.println ("IOException occurred while serializing handshake message.");
-            System.out.println (ex.getMessage());
-            return  eSocketReturns.E_SOCRET_IO_EXCEPTION;
-        }
+        if (ret == eSocketReturns.E_SOCRET_SUCCESS)
+            return WaitAndProcessHandshakeResponse();
+
+        return ret;
     }
 }
