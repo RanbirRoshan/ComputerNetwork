@@ -56,69 +56,17 @@ public class Logger {
         return gLogger;
     }
 
-    /**
-     * Initializes the logger class for use.
-     *
-     * <p>
-     *     No API of logger can be used without initialization. If an initialization fails the logger cannot be re-initialized. The logger interface creates a new log file. The name of the file is of the form "log_peer_{pClientId}.log". If a file with same name already exists, the existing file is renamed to another file with a number added to it as suffix. The logger append the write requests to the file. The operation of the logger is thread safe for atomic write requests. Logger at present does not guarantees the sequence of multiple write requests from same thread in a multi threaded environment.
-     * </p>
-     *
-     * @return The returned value is from the @eLoggerErrors enum and denotes the end-result state for the requested operation.
-     */
-    eLoggerErrors Initialize(int pClientId)
-    {
-        int         count   = 1;
-        Path        srcPath;
-        Path        targetPath;
+    private eLoggerErrors CreateNewLogFile (Path pPath){
+
         FileChannel fChannel;
         FileLock    fLock;
         File        newFile;
-        String      newFileName;
-
-        // re initialization is not allowed
-        if (vFile != null || vInitialized)
-            return eLoggerErrors.E_LE_ALREADY_INITIALIZED;
-
-        vInitialized = true;
-
-        vFileName   = "log_peer_" + pClientId + ".log";
-
-        srcPath  = Paths.get (vFileName);
-        srcPath = srcPath.toAbsolutePath();
-
-        if (!Files.notExists(srcPath)) {
-            boolean retry = true;
-            do {
-
-                newFileName = String.format("log_peer_%d_%d.log", pClientId, count);
-
-                targetPath = Paths.get (newFileName);
-
-                // rename old logfile to newFileName only if there is no file with same name in the current directory
-                if (Files.notExists (targetPath)){
-
-                    try {
-                        Files.move(srcPath, targetPath);
-                    }
-                    catch (Exception e){
-                        System.out.println ("*******************EXCEPTION*******************");
-                        System.out.println("Old log file exists. Unable to rename it to new file");
-                        System.out.println(e.getMessage());
-                        return eLoggerErrors.E_LE_FAILED;
-                    }
-
-                    retry = false;
-                }
-
-                count++;
-            } while (retry);
-        }
 
         newFile = new File (vFileName);
 
         try {
 
-            Files.createFile(srcPath);
+            Files.createFile(pPath);
 
             vFile = new RandomAccessFile(newFile, "rw");
 
@@ -139,6 +87,74 @@ public class Logger {
         }
 
         return eLoggerErrors.E_LE_SUCCESS;
+    }
+
+    private eLoggerErrors RenameOldLogFile (int pClientId, Path pPath){
+
+        int         count   = 1;
+        Path        targetPath;
+        String      newFileName;
+        boolean     retry = true;
+
+        do {
+            newFileName = String.format("log_peer_%d_%d.log", pClientId, count);
+
+            targetPath = Paths.get (newFileName);
+
+            // rename old logfile to newFileName only if there is no file with same name in the current directory
+            if (Files.notExists (targetPath)){
+
+                try {
+                    Files.move(pPath, targetPath);
+                }
+                catch (Exception e){
+                    System.out.println ("*******************EXCEPTION*******************");
+                    System.out.println("Old log file exists. Unable to rename it to new file");
+                    System.out.println(e.getMessage());
+                    return eLoggerErrors.E_LE_FAILED;
+                }
+
+                retry = false;
+            }
+
+            count++;
+        } while (retry);
+
+        return eLoggerErrors.E_LE_SUCCESS;
+    }
+
+    /**
+     * Initializes the logger class for use.
+     *
+     * <p>
+     *     No API of logger can be used without initialization. If an initialization fails the logger cannot be re-initialized. The logger interface creates a new log file. The name of the file is of the form "log_peer_{pClientId}.log". If a file with same name already exists, the existing file is renamed to another file with a number added to it as suffix. The logger append the write requests to the file. The operation of the logger is thread safe for atomic write requests. Logger at present does not guarantees the sequence of multiple write requests from same thread in a multi threaded environment.
+     * </p>
+     *
+     * @return The returned value is from the @eLoggerErrors enum and denotes the end-result state for the requested operation.
+     */
+    eLoggerErrors Initialize(int pClientId)
+    {
+        Path            srcPath;
+        eLoggerErrors   ret = eLoggerErrors.E_LE_SUCCESS;
+
+        // re initialization is not allowed
+        if (vFile != null || vInitialized)
+            return eLoggerErrors.E_LE_ALREADY_INITIALIZED;
+
+        vInitialized = true;
+
+        vFileName   = "log_peer_" + pClientId + ".log";
+
+        srcPath  = Paths.get (vFileName);
+        srcPath = srcPath.toAbsolutePath();
+
+        if (!Files.notExists(srcPath))
+             ret = RenameOldLogFile(pClientId, srcPath);
+
+        if (ret == eLoggerErrors.E_LE_SUCCESS)
+            ret = CreateNewLogFile(srcPath);
+
+        return  ret;
     }
 
     /**
@@ -224,6 +240,29 @@ public class Logger {
         return eLoggerErrors.E_LE_SUCCESS;
     }
 
+    private String IndentMsg (String pLogMessage){
+
+        int     indentValue;
+
+        indentValue = vIndent.intValue();
+
+        if (indentValue < 1)
+            return pLogMessage;
+
+        String indent = "";
+
+        for (int iter = 0; iter < indentValue; iter++){
+            indent += "\t";
+        }
+
+        pLogMessage = indent + pLogMessage;
+
+        indent = "\n"+indent;
+
+        // for log to be proper ever newline in the message should also be properly indented
+        return pLogMessage.replace("\n", indent);
+    }
+
     /**
      * Logs the message to the message file. The data is appended at the end. The operation is thread safe. But no guarantee of the same to two consecutive calls to be printed one after another in a multi threaded environment. If the user wants to achieve this then user is expected to use LoggerLock API.
      *
@@ -240,25 +279,8 @@ public class Logger {
             return ret;
 
         try {
-            int     indentValue;
 
-            indentValue = vIndent.intValue();
-
-            if (indentValue > 0)
-            {
-                String indent = "";
-
-                for (int iter = 0; iter < indentValue; iter++){
-                    indent += "\t";
-                }
-
-                pLogMessage = indent + pLogMessage;
-
-                indent = "\n"+indent;
-
-                // for log to be proper ever newline in the message should also be properly indented
-                pLogMessage = pLogMessage.replace("\n", indent);
-            }
+            pLogMessage = IndentMsg(pLogMessage);
 
             pLogMessage = pLogMessage + vEndOfLine;
 

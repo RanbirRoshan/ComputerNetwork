@@ -3,12 +3,10 @@
  */
 package peerProcess;
 
-import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.net.InetAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
-import java.net.UnknownHostException;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.text.SimpleDateFormat;
@@ -38,7 +36,7 @@ public class peerProcess {
         int         PortNumber;
         boolean     HasFile;
         boolean     HasFullFile;
-        int[]       FileState = null;
+        byte[]      FileState = null;
     }
 
     private peerProcess (int pPeerId) {
@@ -70,35 +68,54 @@ public class peerProcess {
         return true;
     }
 
-    /**
-     * Reads both the configuration files and populates the app variables.
-     *
-     * @return true when the configurations are successfully read and false otherwise.
-     */
-    private boolean ReadConfigurations () {
+    private static boolean CheckFileIsMissing (String pFileName){
 
+        if (Files.notExists(Paths.get (pFileName))){
+            System.out.println ("Missing file: \"" + pFileName + "\" at location: \"" + Paths.get(".").toAbsolutePath().toString() + "\"");
+            return true;
+        }
+
+        return false;
+    }
+
+    private boolean ValidateConfigFileData ()
+    {
+        // validate the configurations
+        if (PreferredNeighbourCount < 1 || UnchockingInterval < 1 || OptimisticUnchokingInterval < 1 || FileSize < 1 || PieceSize < 1) {
+
+            System.out.println("One of the configuration is file \"" + ConfigFileName + "\" is incorrect.");
+            return false;
+        }
+
+        if (CheckFileIsMissing(FileName)) {
+
+            System.out.println("The file: \"" + FileName + "\" specified in the configuration does not exists.");
+            return false;
+        }
+
+        /*if (Files.size(Paths.get(FileName)) != FileSize){
+
+            System.out.println ("The file size specified in configuration and size of actual file does not match.");
+            return false;
+        }*/
+
+        return true;
+    }
+
+    private boolean ReadConfigFile ()
+    {
         Scanner     fileScanner;
         String      configLabel;
 
-        if (Files.notExists(Paths.get (ConfigFileName))){
-            System.out.println ("Missing file: \"" + ConfigFileName + "\" at location: \"" + Paths.get(".").toAbsolutePath().toString() + "\"");
-            return false;
-        }
-
-        if (Files.notExists(Paths.get (PeerInfoFile))){
-            System.out.println ("Missing file: \"" + PeerInfoFile + "\" at location: \"" + Paths.get(".").toAbsolutePath().toString() + "\"");
-            return false;
-        }
-
         try {
-            fileScanner = new Scanner(Paths.get (ConfigFileName));
+            fileScanner = new Scanner(Paths.get(ConfigFileName));
 
             while (fileScanner.hasNext()) {
 
                 configLabel = fileScanner.next();
 
                 // updating the relevant configuration based on the config label
-                switch (configLabel){
+                switch (configLabel) {
                     case "NumberOfPreferredNeighbors":
                         PreferredNeighbourCount = fileScanner.nextInt();
                         break;
@@ -126,29 +143,23 @@ public class peerProcess {
                     default:
                         System.out.println("Invalid configuration value: " + configLabel);
                         return false;
-
-
                 }
             }
+        }
+        catch (IOException ex){
+            System.out.println ("Unable to open configuration file : \"" + ConfigFileName + "\".");
+            System.out.println (ex.getMessage());
+            return false;
+        }
 
-            // validate the configurations
-            if (PreferredNeighbourCount < 1 || UnchockingInterval < 1 || OptimisticUnchokingInterval < 1 || FileSize < 1 || PieceSize < 1){
+        return ValidateConfigFileData();
+    }
 
-                System.out.println ("One of the configuration is file \"" + ConfigFileName +"\" is incorrect.");
-                return false;
-            }
+    private boolean ReadPeerFile (){
 
-            if (FileName == null || Files.notExists(Paths.get(FileName))){
+        Scanner     fileScanner;
 
-                System.out.println ("The file: \""+ FileName + "\" specified in the configuration does not exists.");
-                return false;
-            }
-
-            /*if (Files.size(Paths.get(FileName)) != FileSize){
-
-                System.out.println ("The file size specified in configuration and size of actual file does not match.");
-                return false;
-            }*/
+        try {
 
             fileScanner   = new Scanner(Paths.get (PeerInfoFile));
 
@@ -164,10 +175,10 @@ public class peerProcess {
                 peerData.PortNumber = fileScanner.nextInt();
                 peerData.HasFile    = (fileScanner.nextInt() == 1);
 
-                pktCount = FileSize/PieceSize + ((FileSize%PieceSize > 0)?1:0);
-                arraySize = pktCount/Integer.SIZE + ((pktCount%Integer.SIZE > 0)?1:0);
+                pktCount    = FileSize/PieceSize + ((FileSize%PieceSize > 0)?1:0);
+                arraySize   = pktCount/Byte.SIZE + ((pktCount%Byte.SIZE > 0)?1:0);
 
-                peerData.FileState  = new int[arraySize];
+                peerData.FileState  = new byte[arraySize];
 
                 for (int iter = 0; iter < arraySize; iter++){
 
@@ -186,18 +197,29 @@ public class peerProcess {
                 PeerMap.put(peerData.PeerId, peerData);
             }
         }
-        catch (FileNotFoundException ex){
-            System.out.println ("One of the configuration file is missing.");
-            System.out.println (ex.getMessage());
-            return false;
-        }
-        catch (Exception ex){
-            System.out.println ("Error in parsing one of the configuration file.");
+        catch (IOException ex){
+            System.out.println ("Unable to open the configuration file: \"" + PeerInfoFile +"\".");
             System.out.println (ex.getMessage());
             return false;
         }
 
         return true;
+    }
+
+    /**
+     * Reads both the configuration files and populates the app variables.
+     *
+     * @return true when the configurations are successfully read and false otherwise.
+     */
+    private boolean ReadConfigurations () {
+
+        if (CheckFileIsMissing (ConfigFileName))
+            return false;
+
+        if (CheckFileIsMissing(PeerInfoFile))
+            return false;
+
+        return ReadConfigFile() && ReadPeerFile();
     }
 
     public static void main(String[] args) {

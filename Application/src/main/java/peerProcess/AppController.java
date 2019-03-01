@@ -39,7 +39,17 @@ public class AppController extends Thread {
 
             SocketOutStream.flush();
 
-            PerformHandshake ();
+            // perform handshake and abandon the processing in case handshake fails
+            if (PerformHandshake () != eSocketReturns.E_SOCRET_SUCCESS){
+                Logger.GetLogger().Log(Calendar.getInstance().getTime().toString() + ": " + PeerId + " fails performing handshake. THE PEER IS ABANDONED.");
+                return;
+            }
+
+            // handshake is always followed by BitSetExchange
+            if (PerformBitSetExchange() != eSocketReturns.E_SOCRET_SUCCESS){
+                Logger.GetLogger().Log(Calendar.getInstance().getTime().toString() + ": " + PeerId + " fails performing BitSet Excahnge with peer: " + ClientPeerId+" . THE PEER IS ABANDONED.");
+                return;
+            }
 
             Thread.sleep(10000);
 
@@ -51,49 +61,114 @@ public class AppController extends Thread {
         }
     }
 
-    private eSocketReturns PerformHandshake ()
-    {
+    private eSocketReturns ProcessBitSetResponse (){
+
+        BitFieldMessage                     bitFieldMsg;
+        Message                             msg;
+        peerProcess.PeerConfigurationData   data;
+
         try {
-            HandshakeMsg        msg;
-            int                 responseProtocol;
-
-            String handshakeHeader = "P2PFILESHARINGPROJ";
-            msg = new HandshakeMsg(handshakeHeader, PeerId);
-
-            SocketOutStream.writeInt(eProtocolType.PROTOCOL_HANDSHAKE.GetVal());
-            SocketOutStream.writeObject(msg);
-            SocketOutStream.flush();
-
-            responseProtocol = SocketInputStream.readInt ();
-
-            if (responseProtocol != eProtocolType.PROTOCOL_HANDSHAKE.GetVal()){
-                Logger.GetLogger().Log("Handshake Message failed. Received Protocol Type: " + responseProtocol + " when expecting 1.")
-                return eSocketReturns.E_SOCRET_FAILED;
-            }
-
-            msg = (HandshakeMsg) SocketInputStream.readObject();
-
-            if (!msg.GetHdrBuf().equals(handshakeHeader)){
-                Logger.GetLogger().Log("Handshake failed. Received invalid handshake header.");
-                return eSocketReturns.E_SOCRET_FAILED;
-            }
-
-            if (!peerProcess.PeerMap.containsKey(msg.GetPeerId()) || msg.GetPeerId() == PeerId){
-                Logger.GetLogger().Log("Handshake failed. Received invalid PeerId.");
-                return eSocketReturns.E_SOCRET_FAILED;
-            }
-
-            ClientPeerId = msg.GetPeerId();
-
-            Logger.GetLogger().Log(Calendar.getInstance().getTime().toString() + ": " + PeerId + " makes a connection to " + ClientPeerId);
+            msg = (Message) SocketInputStream.readObject();
         }
-        catch (IOException | ClassNotFoundException ex){
+        catch (ClassNotFoundException | IOException ex){
             System.out.println ("*******************EXCEPTION*******************");
-            System.out.println ("IOException occurred while serializing or de-serializing handshake message.");
+            System.out.println ("IOException occurred while de-serializing BitField message.");
             System.out.println (ex.getMessage());
             return  eSocketReturns.E_SOCRET_IO_EXCEPTION;
         }
 
+        if (msg.OperationType != eOperationType.OPERATION_BITFIELD.GetVal()){
+            System.out.println ("Error in BitField message exchange received Operation Type: " + msg.OperationType +" when expecting :" + eOperationType.OPERATION_BITFIELD);
+            return eSocketReturns.E_SOCRET_FAILED;
+        }
+
+        // not thaw we have verified the message to be of right type we can cast it into our actual message structure
+        bitFieldMsg = (BitFieldMessage)msg;
+
+        data = peerProcess.PeerMap.get(ClientPeerId);
+
+        // the bit field file sate length should be same as the file iis same for all if they are not same we have some error in the system
+        if (bitFieldMsg.BitField.length != data.FileState.length){
+            System.out.println ("Error in BitField message exchange received Operation Type: " + msg.OperationType +" when expecting :" + eOperationType.OPERATION_BITFIELD);
+            return eSocketReturns.E_SOCRET_FAILED;
+        }
+
+        // overwrite the current client file state info with the latest available info
+        data.FileState = bitFieldMsg.BitField;
+
+        return  eSocketReturns.E_SOCRET_SUCCESS;
+    }
+
+    private eSocketReturns PerformBitSetExchange (){
+
+        BitFieldMessage    msg = new BitFieldMessage();
+
+        msg.SetBitFieldInfo(peerProcess.PeerMap.get(PeerId).FileState);
+
+        try {
+            SocketOutStream.writeObject(msg);
+            SocketOutStream.flush();
+        }
+        catch (IOException ex){
+            System.out.println ("*******************EXCEPTION*******************");
+            System.out.println ("IOException occurred while sending BitField message.");
+            System.out.println (ex.getMessage());
+            return  eSocketReturns.E_SOCRET_IO_EXCEPTION;
+
+        }
+        return  ProcessBitSetResponse();
+    }
+
+    private eSocketReturns WaitAndProcessHandshakeResponse (String pHandshakeHeader) {
+
+        int             responseProtocol;
+        HandshakeMsg    msg;
+
+        try {
+            msg = (HandshakeMsg) SocketInputStream.readObject();
+        }
+        catch (IOException | ClassNotFoundException ex){
+            System.out.println ("*******************EXCEPTION*******************");
+            System.out.println ("IOException occurred while de-serializing handshake message.");
+            System.out.println (ex.getMessage());
+            return  eSocketReturns.E_SOCRET_IO_EXCEPTION;
+        }
+
+        if (!msg.GetHdrBuf().equals(pHandshakeHeader)){
+            Logger.GetLogger().Log("Handshake failed. Received invalid handshake header.");
+            return eSocketReturns.E_SOCRET_FAILED;
+        }
+
+        // if the peer is invalid as per known peer from configuration or the peer has the same ID as the current application
+        if (!peerProcess.PeerMap.containsKey(msg.GetPeerId()) || msg.GetPeerId() == PeerId){
+            Logger.GetLogger().Log("Handshake failed. Received invalid PeerId.");
+            return eSocketReturns.E_SOCRET_FAILED;
+        }
+
+        ClientPeerId = msg.GetPeerId();
+
+        Logger.GetLogger().Log(Calendar.getInstance().getTime().toString() + ": " + PeerId + " makes a connection to " + ClientPeerId);
+
         return eSocketReturns.E_SOCRET_SUCCESS;
+    }
+
+    private eSocketReturns PerformHandshake ()
+    {
+        try {
+            HandshakeMsg    msg;
+            final String    handshakeHeader = "P2PFILESHARINGPROJ";
+
+            msg = new HandshakeMsg(handshakeHeader, PeerId);
+            SocketOutStream.writeObject(msg);
+            SocketOutStream.flush();
+
+            return WaitAndProcessHandshakeResponse(handshakeHeader);
+        }
+        catch (IOException ex){
+            System.out.println ("*******************EXCEPTION*******************");
+            System.out.println ("IOException occurred while serializing handshake message.");
+            System.out.println (ex.getMessage());
+            return  eSocketReturns.E_SOCRET_IO_EXCEPTION;
+        }
     }
 }
