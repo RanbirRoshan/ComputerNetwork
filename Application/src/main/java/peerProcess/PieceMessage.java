@@ -1,13 +1,13 @@
 package peerProcess;
 
 class PieceMessage extends Message {
-    int                 PieceNum;
-    private byte[]      PayLoad;
+    int             PieceId;
+    private byte[]  PayLoad;
 
     PieceMessage(){
         // initializing the value in the parent class
         super (eOperationType.OPERATION_PIECE.GetVal());
-        PieceNum = -1;
+        PieceId = -1;
         PayLoad  = null;
     }
 

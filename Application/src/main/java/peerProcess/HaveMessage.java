@@ -1,13 +1,12 @@
 package peerProcess;
 
-class RequestMessage extends Message {
+public class HaveMessage extends Message {
 
-    int     PieceId;
+    int        PieceId;
 
-    RequestMessage(){
+    HaveMessage (){
         // initializing the value in the parent class
-        super(eOperationType.OPERATION_REQUEST.GetVal());
-        PieceId = -1;
+        super(eOperationType.OPERATION_HAVE.GetVal());
         //setting the size of the BitFieldMessage
         SetMessageLength(MessageClassLen + Integer.BYTES);
     }

@@ -27,17 +27,20 @@ public class peerProcess {
     private int             PieceSize;
     private AtomicBoolean   TaskComplete;
     private int             MyPeerId;
-    public static final int BitPerBufVal = Integer.SIZE;
+    static final int        BitPerBufVal = Integer.SIZE;
+    BroadcastStruct         HaveBroadCastList;
 
     static LinkedHashMap <Integer, PeerConfigurationData> PeerMap;
 
     class PeerConfigurationData {
+
         Integer     PeerId;
         String      HostName;
         int         PortNumber;
         boolean     HasFile;
         boolean     HasFullFile;
         int[]       FileState = null;
+        int         NumPiecesAvailable;
     }
 
     private peerProcess (int pPeerId) {
@@ -48,6 +51,11 @@ public class peerProcess {
         FileName    = null;
 
         TaskComplete    = new AtomicBoolean(false);
+        HaveBroadCastList   = new BroadcastStruct();
+
+        // adding a dummy list for everyone to have an initial list to start with if we dont have it we will land into
+        // trouble as the threads that start at same time with no initial input will not know the first broadcast message
+        HaveBroadCastList.AddForBroadcast((byte)-1, null);
 
         OptimisticUnchokingInterval = 0;
         UnchockingInterval          = 0;
@@ -190,6 +198,11 @@ public class peerProcess {
                     arraySize = pktCount / BitPerBufVal;
                 }
 
+                if(peerData.PeerId == MyPeerId && peerData.HasFile)
+                    peerData.NumPiecesAvailable = pktCount;
+                else
+                    peerData.NumPiecesAvailable = 0;
+
                 peerData.FileState  = new int[arraySize];
 
                 for (int iter = 0; iter < arraySize; iter++){
@@ -264,8 +277,10 @@ public class peerProcess {
         for (Map.Entry<Integer, PeerConfigurationData> mapPair : PeerMap.entrySet()) {
 
             // if any of the peer does not have full file return false
-            if (!mapPair.getValue().HasFile)
-                return false;
+            for ( int iter = mapPair.getValue().FileState.length - 1; iter >= 0; iter --){
+                if (mapPair.getValue().FileState[iter] != -1)
+                    return false;
+            }
         }
 
         return true;
@@ -288,7 +303,7 @@ public class peerProcess {
             try {
                 newSocket = new Socket(InetAddress.getByName(((PeerConfigurationData) mapPair.getValue()).HostName), ((PeerConfigurationData) mapPair.getValue()).PortNumber);
 
-                newThread = new AppController (newSocket, MyPeerId, true);
+                newThread = new AppController (newSocket, MyPeerId, true, HaveBroadCastList);
 
                 // thread is marked as daemon. Only the main thread is non daemon. But is blocked for all task to complete. If all task is complete we quit :)
                 newThread.setDaemon(true);
@@ -353,7 +368,7 @@ public class peerProcess {
                     // the server would keep listening
                     while (!TaskComplete.get()){
 
-                        noob = new AppController (listeningSocket.accept(), MyPeerId, false);
+                        noob = new AppController (listeningSocket.accept(), MyPeerId, false, HaveBroadCastList);
 
                         noob.setDaemon(true);
 
