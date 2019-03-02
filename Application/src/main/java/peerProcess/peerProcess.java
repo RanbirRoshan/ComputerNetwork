@@ -3,7 +3,9 @@
  */
 package peerProcess;
 
+import java.io.FileNotFoundException;
 import java.io.IOException;
+import java.io.RandomAccessFile;
 import java.net.InetAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
@@ -24,8 +26,9 @@ public class peerProcess {
     private int             OptimisticUnchokingInterval;
     private String          FileName;
     private int             FileSize;
-    private int             PieceSize;
+    static int              PieceSize;
     private AtomicBoolean   TaskComplete;
+    static RandomAccessFile DatFile;
     private int             MyPeerId;
     static final int        BitPerBufVal = Integer.SIZE;
     BroadcastStruct         HaveBroadCastList;
@@ -102,6 +105,14 @@ public class peerProcess {
             return false;
         }
 
+
+        try {
+            DatFile = new RandomAccessFile(new java.io.File(FileName), "rw");
+        } catch (FileNotFoundException ex){
+
+            System.out.println("Failed to open data file for IO.");
+            return false;
+        }
         /*if (Files.size(Paths.get(FileName)) != FileSize){
 
             System.out.println ("The file size specified in configuration and size of actual file does not match.");
@@ -198,9 +209,12 @@ public class peerProcess {
                     arraySize = pktCount / BitPerBufVal;
                 }
 
-                if(peerData.PeerId == MyPeerId && peerData.HasFile)
+                if(peerData.PeerId == MyPeerId && !peerData.HasFile)
+                    DatFile.setLength(0);
+
+                if(peerData.PeerId == MyPeerId && peerData.HasFile) {
                     peerData.NumPiecesAvailable = pktCount;
-                else
+                }else
                     peerData.NumPiecesAvailable = 0;
 
                 peerData.FileState  = new int[arraySize];

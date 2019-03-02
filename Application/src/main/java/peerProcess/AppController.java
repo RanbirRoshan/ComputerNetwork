@@ -270,18 +270,31 @@ public class AppController extends Thread {
      */
     private eSocketReturns SendPieceResponse (int pPieceId){
 
+        int          bytesRead;
         PieceMessage msg = new PieceMessage();
         byte[]       data;
 
+        data = new byte[peerProcess.PieceSize];
+
         msg.PieceId = pPieceId;
 
-        /****************************DUMMY FILLED DATA************************************/
-        data = new byte[3];
-        data[0] = 99;
-        data [1] = 100;
-        data [2] = 101;
-        /****************************************************************/
+        try {
 
+            peerProcess.DatFile.seek(pPieceId*peerProcess.PieceSize);
+            bytesRead  = peerProcess.DatFile.read(data, 0, peerProcess.PieceSize);
+
+            if (bytesRead < peerProcess.PieceSize){
+
+                data = new byte[bytesRead];
+
+                peerProcess.DatFile.seek(pPieceId*peerProcess.PieceSize);
+                bytesRead  = peerProcess.DatFile.read(data, 0, bytesRead);
+            }
+        } catch (IOException ex){
+            return eSocketReturns.E_SOCRET_IO_EXCEPTION;
+        } catch (Exception ex){
+            return eSocketReturns.E_SOCRET_IO_EXCEPTION;
+        }
         msg.SetPieceData(data);
 
         return SendObj(msg, "IOException occurred while sending piece message.");
@@ -326,6 +339,13 @@ public class AppController extends Thread {
 
         // logging as per the specification
         Logger.GetLogger().Log(Calendar.getInstance().getTime().toString() + ": Peer " + PeerId + " has downloaded the piece " + pMsg.PieceId + " from  " + ClientPeerId + ". Now the number of pieces it has is " + ++(SelfData.NumPiecesAvailable));
+
+        try {
+            peerProcess.DatFile.seek(pMsg.PieceId * peerProcess.PieceSize);
+            peerProcess.DatFile.write(pMsg.GetPieceData());
+        } catch (IOException ex){
+            return eSocketReturns.E_SOCRET_IO_EXCEPTION;
+        }
 
         // updating the bit value so that the same packet is requested again from any other client
         SelfData.FileState[pMsg.PieceId /peerProcess.BitPerBufVal] |= (1 << peerProcess.BitPerBufVal - pMsg.PieceId %peerProcess.BitPerBufVal -1);
