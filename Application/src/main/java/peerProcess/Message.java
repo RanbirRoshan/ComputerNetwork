@@ -7,7 +7,7 @@ public class Message implements Serializable {
     byte                OperationType;
 
     //the message class contributes only 1 byte to the overallMessageLength
-    transient protected static final int       MessageClassLen = 1;
+    transient protected static final int       MessageClassLen = 5;
 
     Message (byte pOperationType){
         MessageLength = 0;

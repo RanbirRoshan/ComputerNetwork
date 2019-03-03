@@ -14,7 +14,7 @@ class PieceMessage extends Message {
     void SetPieceData (byte[] pData){
         //setting the size of the BitFieldMessage
         PayLoad = pData;
-        SetMessageLength(MessageClassLen + pData.length);
+        SetMessageLength(MessageClassLen + pData.length + Integer.BYTES);
     }
 
     byte[] GetPieceData ()

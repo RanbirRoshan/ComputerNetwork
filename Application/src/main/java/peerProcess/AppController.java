@@ -97,7 +97,8 @@ public class AppController extends Thread {
 
             ret = BroadcastActivity ();
 
-            ret = SendActivity ();
+            if (ret == eSocketReturns.E_SOCRET_SUCCESS)
+                ret = SendActivity ();
 
             if (ret == eSocketReturns.E_SOCRET_SUCCESS)
                 ret = ReceiveAndActActivity ();
@@ -516,10 +517,10 @@ public class AppController extends Thread {
 
         BitFieldMessage    msg = new BitFieldMessage();
 
-        msg.SetBitFieldInfo(peerProcess.PeerMap.get(PeerId).FileState);
-
         //recording the current end broadcast element as the current client needs data only beyond this
         LastBroadcastData = HaveBroadcastList.GetLast();
+
+        msg.SetBitFieldInfo(peerProcess.PeerMap.get(PeerId).FileState);
 
         ret = SendObj(msg, "IOException occurred while sending BitField message.");
 
