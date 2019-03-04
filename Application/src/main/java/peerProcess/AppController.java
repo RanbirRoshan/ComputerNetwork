@@ -281,8 +281,6 @@ public class AppController extends Thread {
      * <p>
      *     The function is responsible for preparing the message with piece data and sending it over to the client
      * </p>
-     * 
-     * @// TODO: 3/2/2019 send actual file data to the client instead of dummy data
      *
      * @param pPieceId The piece id that is to be sent
      *
@@ -389,8 +387,6 @@ public class AppController extends Thread {
      * <p>
      *     The function is responsible for handling the Piece/Packet sent by the client in response for the request made from the server
      * </p>
-     * 
-     * @// TODO: 3/2/2019 Validate if the client has sent the correct package as per the request. Implement one packet at a time.
      * 
      * @param pMsg The message as recieved from client
      * @return The end status of the operation.
@@ -517,7 +513,7 @@ public class AppController extends Thread {
         int     Value;
     }
 
-    int GetRandomSetBitPos (int pValue, int pIndex){
+    private int GetRandomSetBitPos (int pValue, int pIndex){
 
         ArrayList posOption = new ArrayList();
         int       randomSelection = 1<<31;
@@ -606,10 +602,8 @@ public class AppController extends Thread {
             reserveBit = (1 << (peerProcess.BitPerBufVal - 1 - bitPosition));
 
             // try to reserve the piece for request from client
-            if (ReservePieceForRequest(((RanPosSelectionNode) posOption.get(randomSelection)).Position, reserveBit)) {
-                int ans = ((RanPosSelectionNode) posOption.get(randomSelection)).Position * peerProcess.BitPerBufVal + bitPosition;
-                return  ans;
-            }
+            if (ReservePieceForRequest(((RanPosSelectionNode) posOption.get(randomSelection)).Position, reserveBit))
+                return ((RanPosSelectionNode) posOption.get(randomSelection)).Position * peerProcess.BitPerBufVal + bitPosition;
             else {
                 // someone else requested what we wanted to request
                 ((RanPosSelectionNode) posOption.get(randomSelection)).Value = ((RanPosSelectionNode) posOption.get(randomSelection)).Value & (~reserveBit);
@@ -623,7 +617,6 @@ public class AppController extends Thread {
     }
 
     /**
-     * @// TODO: 3/2/2019 Improvise this
      * @return The end status of the operation.
      */
     private eSocketReturns SendActivity () {
