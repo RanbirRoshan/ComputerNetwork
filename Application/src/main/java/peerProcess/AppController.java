@@ -36,7 +36,7 @@ public class AppController extends Thread {
         SelfData         = peerProcess.PeerMap.get(pPeerId);
         MakesConnection  = pMakesConnection;
         HaveBroadcastList= pHaveBroadcastList;
-        LastBroadcastData= null;
+        LastBroadcastData= pHaveBroadcastList.GetLast();
         RequestedPieceId = -1;
     }
 
@@ -78,7 +78,7 @@ public class AppController extends Thread {
 
             // handshake is always followed by BitSetExchange
             if (PerformFileOp () != eSocketReturns.E_SOCRET_SUCCESS){
-                Logger.GetLogger().Log(Calendar.getInstance().getTime().toString() + ": " + PeerId + " fails performing BitSet Excahnge with peer: " + ClientPeerId+" . THE PEER IS ABANDONED.");
+                Logger.GetLogger().Log(Calendar.getInstance().getTime().toString() + ": " + PeerId + " fails performing file exchange with peer: " + ClientPeerId+" . THE PEER IS ABANDONED.");
                 return;
             }
 
@@ -203,7 +203,9 @@ public class AppController extends Thread {
      */
     private eSocketReturns SendObj (Object pObj, String pFailureMsg){
 
+        byte    extra = 1;
         try {
+            SocketOutStream.writeByte(extra);
             SocketOutStream.writeObject(pObj);
             SocketOutStream.flush();
         }
@@ -230,8 +232,14 @@ public class AppController extends Thread {
         ResponseOutput out = new ResponseOutput();
 
         try {
-            out.Response = (Message) SocketInputStream.readObject();
-            out.Error    = eSocketReturns.E_SOCRET_SUCCESS;
+            if (SocketInputStream.available() > 0) {
+                SocketInputStream.readByte();
+                out.Response = (Message) SocketInputStream.readObject();
+                out.Error = eSocketReturns.E_SOCRET_SUCCESS;
+            } else {
+                out.Error = eSocketReturns.E_SOCRET_NOTHING_TO_READ;
+                out.Response = null;
+            }
         }
         catch (ClassNotFoundException | IOException ex){
             System.out.println ("*******************EXCEPTION*******************");
@@ -484,6 +492,9 @@ public class AppController extends Thread {
 
         ret = ReceiveObj("IOException occurred while de-serializing *** message.");
 
+        if (ret.Error == eSocketReturns.E_SOCRET_NOTHING_TO_READ)
+            return  eSocketReturns.E_SOCRET_SUCCESS;
+
         // error receiving the object
         if (ret.Error != eSocketReturns.E_SOCRET_SUCCESS)
             return ret.Error;
@@ -651,7 +662,9 @@ public class AppController extends Thread {
         BitFieldMessage bitFieldMsg;
         ResponseOutput  out;
 
-        out = ReceiveObj("IOException occurred while de-serializing BitField message.");
+        do {
+            out = ReceiveObj("IOException occurred while de-serializing BitField message.");
+        } while (out.Error == eSocketReturns.E_SOCRET_NOTHING_TO_READ);
 
         if (out.Error != eSocketReturns.E_SOCRET_SUCCESS)
             return out.Error;
@@ -719,6 +732,7 @@ public class AppController extends Thread {
         HandshakeMsg    msg;
 
         try {
+            SocketInputStream.readByte();
             msg = (HandshakeMsg) SocketInputStream.readObject();
         }
         catch (IOException | ClassNotFoundException ex){
