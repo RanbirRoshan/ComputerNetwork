@@ -4,11 +4,13 @@ import java.io.IOException;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
 import java.net.Socket;
+import java.util.ArrayList;
 import java.util.Calendar;
 
 public class AppController extends Thread {
 
     private Socket                      ConnSocket;
+    private int                         RequestedPieceId;
     private int                         PeerId;
     private int                         ClientPeerId;
     private boolean                     MakesConnection;
@@ -35,6 +37,7 @@ public class AppController extends Thread {
         MakesConnection  = pMakesConnection;
         HaveBroadcastList= pHaveBroadcastList;
         LastBroadcastData= null;
+        RequestedPieceId = -1;
     }
 
     /**
@@ -251,11 +254,19 @@ public class AppController extends Thread {
      * @return The end status of the operation.
      */
     private eSocketReturns SendPieceRequest (int pPieceId){
+
+        eSocketReturns ret;
+
         RequestMessage msg = new RequestMessage();
 
         msg.PieceId = pPieceId;
 
-        return SendObj (msg, "IOException occurred while sending piece Request message.");
+        ret = SendObj (msg, "IOException occurred while sending piece Request message.");
+
+        if (ret == eSocketReturns.E_SOCRET_SUCCESS)
+            RequestedPieceId = pPieceId;
+
+        return ret;
     }
 
     /**
@@ -320,6 +331,52 @@ public class AppController extends Thread {
         return SendPieceResponse (pMsg.PieceId);
     }
 
+    /*
+    static ArrayList a = new ArrayList();
+    private void DebugState(int newDownloadId, boolean pPreAddCheck)
+    {
+        if (a.contains(newDownloadId)){
+            System.out.println("Fuck Off");
+        }
+        if (pPreAddCheck == false)
+            a.add(newDownloadId);
+
+        if (pPreAddCheck){
+            int num = newDownloadId;
+            int index = num/peerProcess.BitPerBufVal;
+            int requested = SelfData.RequestedFileState.get(index);
+            int downloaded = SelfData.FileState.get(index);
+
+            int bitpos = 1 << (peerProcess.BitPerBufVal - num%peerProcess.BitPerBufVal - 1);
+            if ((requested & bitpos) == 1) {
+                return;
+            }
+
+            if ((downloaded & bitpos) == 1) {
+                return;
+            }
+        }
+
+        for (int iter = 0; iter < a.size(); iter++){
+            int num = (int)a.get(iter);
+            int index = num/peerProcess.BitPerBufVal;
+            int requested = SelfData.RequestedFileState.get(index);
+            int downloaded = SelfData.FileState.get(index);
+
+            int bitpos = 1 << (peerProcess.BitPerBufVal - num%peerProcess.BitPerBufVal - 1);
+
+            if (pPreAddCheck == false) {
+                if ((requested & bitpos) == 0) {
+                    return;
+                }
+
+                if ((downloaded & bitpos) == 0) {
+                    return;
+                }
+            }
+        }
+    }*/
+
     /**
      * <p>
      *     The function is responsible for handling the Piece/Packet sent by the client in response for the request made from the server
@@ -332,8 +389,19 @@ public class AppController extends Thread {
      */
     private eSocketReturns ProcessPieceResponse (PieceMessage pMsg){
 
+        int updatedval;
+        int originalval;
+
         if (pMsg.GetPieceData() == null || pMsg.PieceId == -1)
             return PrintErrorMessageToConsole("Piece Response With Invalid Content");
+
+        if (pMsg.PieceId != RequestedPieceId) {
+            RequestedPieceId = -1;
+            // Requested piece id is reset so that the application can continue to work
+            return PrintErrorMessageToConsole("The piece requested was: " + RequestedPieceId + ". The received piece is: " + pMsg.PieceId + ".");
+        }
+
+        RequestedPieceId = -1;
 
         // The process just receive a piece/package this must be informed to all other online peers
         HaveBroadcastList.AddForBroadcast(eOperationType.OPERATION_HAVE.GetVal(), pMsg.PieceId);
@@ -348,8 +416,13 @@ public class AppController extends Thread {
             return eSocketReturns.E_SOCRET_IO_EXCEPTION;
         }
 
-        // updating the bit value so that the same packet is requested again from any other client
-        SelfData.FileState[pMsg.PieceId /peerProcess.BitPerBufVal] |= (1 << peerProcess.BitPerBufVal - pMsg.PieceId %peerProcess.BitPerBufVal -1);
+        // updating the bit value so that the same packet is not requested again from any other client
+        do {
+            originalval = SelfData.FileState.get (pMsg.PieceId /peerProcess.BitPerBufVal);
+            updatedval  = originalval | (1 << peerProcess.BitPerBufVal - pMsg.PieceId %peerProcess.BitPerBufVal -1);
+        }while (!SelfData.FileState.compareAndSet(pMsg.PieceId /peerProcess.BitPerBufVal, originalval, updatedval));
+
+        //DebugState (pMsg.PieceId, false);
 
         return  eSocketReturns.E_SOCRET_SUCCESS;
     }
@@ -385,8 +458,8 @@ public class AppController extends Thread {
         if (pMsg.PieceId < 0)
             return PrintErrorMessageToConsole("Piece Request With Invalid Content");
 
-        // update the client piece bit for the given piece ID
-        ClientData.FileState[pMsg.PieceId/peerProcess.BitPerBufVal] = ClientData.FileState[pMsg.PieceId/peerProcess.BitPerBufVal] | (1 << (peerProcess.BitPerBufVal - (pMsg.PieceId%peerProcess.BitPerBufVal) - 1));
+        // update the client piece bit for the given piece ID the operation is safe as no other thread will touch this data apart from this
+        ClientData.FileState.set (pMsg.PieceId/peerProcess.BitPerBufVal, ClientData.FileState.get(pMsg.PieceId/peerProcess.BitPerBufVal) | (1 << (peerProcess.BitPerBufVal - (pMsg.PieceId%peerProcess.BitPerBufVal) - 1)));
 
         // the number of pieces with the client has increased by 1
         ClientData.NumPiecesAvailable++;
@@ -428,30 +501,133 @@ public class AppController extends Thread {
         return eSocketReturns.E_SOCRET_FAILED;
     }
 
+    class RanPosSelectionNode {
+        int     Position;
+        int     Value;
+    }
+
+    int GetRandomSetBitPos (int pValue, int pIndex){
+
+        ArrayList posOption = new ArrayList();
+        int       randomSelection = 1<<31;
+
+        for (int iter = 0; iter < 32; iter++){
+            if ((pValue&randomSelection) != 0){
+                posOption.add (iter);
+                //DebugState((pIndex*peerProcess.BitPerBufVal)+iter, true);
+            }
+            randomSelection = randomSelection >>> 1;
+        }
+
+        randomSelection = (int)(Math.random() * posOption.size());
+
+        return (int)posOption.get(randomSelection);
+    }
+
+    private boolean ReservePieceForRequest (int pIndex, int pReserveBit)
+    {
+        int originalRequestBitSet;
+        int newRequestBitSet;
+
+        do {
+            originalRequestBitSet = SelfData.RequestedFileState.get (pIndex);
+
+            // case the request was made from some other client before us
+            if ((originalRequestBitSet & pReserveBit) > 0)
+                return false;
+
+            newRequestBitSet = originalRequestBitSet | pReserveBit;
+
+        } while (!SelfData.RequestedFileState.compareAndSet(pIndex, originalRequestBitSet, newRequestBitSet));
+
+        return true;
+    }
+
+    private ArrayList GetInterestingBitsetList (){
+
+        ArrayList   posOption = new ArrayList();
+        int         clientBits;
+        int         selfMissingBits;
+        int         unrequestedBits;
+        int         candidateBits;
+
+        for (int iter = 0; iter < SelfData.FileState.length(); iter++)
+        {
+            clientBits      = ClientData.FileState.get(iter);
+            selfMissingBits = ~SelfData.FileState.get(iter);
+            unrequestedBits = ~SelfData.RequestedFileState.get(iter);
+
+            // get all non requested bits that are not with currently available but can be downloaded from client
+            candidateBits = (clientBits & selfMissingBits) & unrequestedBits;
+
+            if (candidateBits != 0){
+                // we have potential data that can be downloaded
+                RanPosSelectionNode node = new RanPosSelectionNode();
+                node.Position = iter;
+                node.Value    = candidateBits;
+                posOption.add(node);
+            }
+        }
+
+        return  posOption;
+    }
+
+    private int GetRandomPieceIdToRequest (){
+
+        ArrayList   posOption;
+        int         randomSelection;
+        int         bitPosition;
+        int         reserveBit;
+
+        posOption = GetInterestingBitsetList();
+
+        // try to reserve an interesting packet for request from client
+        do {
+            // if there is nothing that we need from the client
+            if (posOption.size() == 0)
+                return -1;
+
+            randomSelection = (int) (Math.random() * posOption.size());
+
+            // now get a random position from the bit set
+            bitPosition = GetRandomSetBitPos(((RanPosSelectionNode) posOption.get(randomSelection)).Value, ((RanPosSelectionNode) posOption.get(randomSelection)).Position);
+
+            reserveBit = (1 << (peerProcess.BitPerBufVal - 1 - bitPosition));
+
+            // try to reserve the piece for request from client
+            if (ReservePieceForRequest(((RanPosSelectionNode) posOption.get(randomSelection)).Position, reserveBit)) {
+                int ans = ((RanPosSelectionNode) posOption.get(randomSelection)).Position * peerProcess.BitPerBufVal + bitPosition;
+                return  ans;
+            }
+            else {
+                // someone else requested what we wanted to request
+                ((RanPosSelectionNode) posOption.get(randomSelection)).Value = ((RanPosSelectionNode) posOption.get(randomSelection)).Value & (~reserveBit);
+
+                // there is no more interesting bit at this position
+                if (((RanPosSelectionNode) posOption.get(randomSelection)).Value == 0)
+                    posOption.remove(randomSelection);
+            }
+
+        } while (true);
+    }
+
     /**
      * @// TODO: 3/2/2019 Improvise this
      * @return The end status of the operation.
      */
     private eSocketReturns SendActivity () {
 
-        int block_num = -1;
         int packet_num;
-        int bit_num;
 
-        for (int iter = 0; iter < SelfData.FileState.length; iter++)
-        {
-            if (SelfData.FileState[iter] != -1){
-                block_num = iter;
-                break;
-            }
-        }
-
-        if (block_num == -1)
+        // a new request is not sent till the state of last requested packet is determined. This is treated as a success as waiting for a response is not an error
+        if (RequestedPieceId != -1)
             return eSocketReturns.E_SOCRET_SUCCESS;
 
-        bit_num = GetBitSetPos(SelfData.FileState[block_num]);
+        packet_num = GetRandomPieceIdToRequest ();
 
-        packet_num = (block_num * peerProcess.BitPerBufVal) + bit_num;
+        // nothing that can be requested for now
+        if (packet_num == -1)
+            return eSocketReturns.E_SOCRET_SUCCESS;
 
         return SendPieceRequest (packet_num);
     }
@@ -490,13 +666,13 @@ public class AppController extends Thread {
         ClientData = peerProcess.PeerMap.get(ClientPeerId);
 
         // the bit field file sate length should be same as the file iis same for all if they are not same we have some error in the system
-        if (bitFieldMsg.BitField.length != ClientData.FileState.length)
+        if (bitFieldMsg.BitField.length() != ClientData.FileState.length())
             return PrintErrorMessageToConsole("Error in BitField message exchange received Operation Type: " + out.Response.OperationType +" when expecting :" + eOperationType.OPERATION_BITFIELD);
 
         // overwrite the current client file state info with the latest available info
         ClientData.FileState = bitFieldMsg.BitField;
 
-        for (int iter = 0; iter < ClientData.FileState.length; iter++){
+        for (int iter = 0; iter < ClientData.FileState.length(); iter++){
             //count the number of packets the client already has
             ClientData.NumPiecesAvailable = 0;
         }

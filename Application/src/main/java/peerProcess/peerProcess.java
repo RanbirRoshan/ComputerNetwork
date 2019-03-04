@@ -15,6 +15,8 @@ import java.text.SimpleDateFormat;
 import java.util.*;
 import java.lang.Thread;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicIntegerArray;
 
 public class peerProcess {
 
@@ -31,19 +33,19 @@ public class peerProcess {
     static RandomAccessFile DatFile;
     private int             MyPeerId;
     static final int        BitPerBufVal = Integer.SIZE;
-    BroadcastStruct         HaveBroadCastList;
+    private BroadcastStruct HaveBroadCastList;
 
     static LinkedHashMap <Integer, PeerConfigurationData> PeerMap;
 
     class PeerConfigurationData {
-
-        Integer     PeerId;
-        String      HostName;
-        int         PortNumber;
-        boolean     HasFile;
-        boolean     HasFullFile;
-        int[]       FileState = null;
-        int         NumPiecesAvailable;
+        Integer             PeerId;
+        String              HostName;
+        int                 PortNumber;
+        int                 NumPiecesAvailable;
+        boolean             HasFile;
+        boolean             HasFullFile;
+        AtomicIntegerArray  FileState = null;
+        AtomicIntegerArray  RequestedFileState = null;
     }
 
     private peerProcess (int pPeerId) {
@@ -217,18 +219,19 @@ public class peerProcess {
                 }else
                     peerData.NumPiecesAvailable = 0;
 
-                peerData.FileState  = new int[arraySize];
+                peerData.FileState          = new AtomicIntegerArray(arraySize);
+                peerData.RequestedFileState = new AtomicIntegerArray(arraySize);
 
                 for (int iter = 0; iter < arraySize; iter++){
 
                     // if the application has full file it will initialize its file state as all bit set to 1
                     if(peerData.PeerId == MyPeerId && peerData.HasFile) {
-                        peerData.FileState[iter] = -1;
+                        peerData.FileState.set(iter, -1);
                         peerData.HasFullFile     = true;
                     }
                     else {// the value is yer to be discovered by the application protocol
 
-                        peerData.FileState[iter] = (iter + 1 == arraySize)?lastblockval:0;
+                        peerData.FileState.set(iter,(iter + 1 == arraySize)?lastblockval:0);
                         peerData.HasFullFile = false;
                     }
                 }
@@ -291,8 +294,8 @@ public class peerProcess {
         for (Map.Entry<Integer, PeerConfigurationData> mapPair : PeerMap.entrySet()) {
 
             // if any of the peer does not have full file return false
-            for ( int iter = mapPair.getValue().FileState.length - 1; iter >= 0; iter --){
-                if (mapPair.getValue().FileState[iter] != -1)
+            for ( int iter = mapPair.getValue().FileState.length() - 1; iter >= 0; iter --){
+                if (mapPair.getValue().FileState.get(iter) != -1)
                     return false;
             }
         }
