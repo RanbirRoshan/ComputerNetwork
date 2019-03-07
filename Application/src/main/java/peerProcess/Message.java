@@ -10,7 +10,7 @@ public class Message implements Serializable {
     transient protected static final int       MessageClassLen = 5;
 
     Message (byte pOperationType){
-        MessageLength = 0;
+        MessageLength = MessageClassLen;
         OperationType = pOperationType;
     }
 

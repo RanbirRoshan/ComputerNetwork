@@ -383,6 +383,38 @@ public class AppController extends Thread {
         }
     }*/
 
+    private boolean IsPeerInteresting (){
+        ArrayList       list;
+
+        list = GetInterestingBitsetList(true);
+
+        if (list.size() > 0)
+            return true;
+
+        return false;
+    }
+
+    private eSocketReturns SendInterestedMsg(){
+        Message msg;
+        msg = new Message(eOperationType.OPERATION_INTERESTED.GetVal());
+
+        return SendObj(msg, "IOException occurred while sending Interested message.");
+    }
+
+    private eSocketReturns SendNotInterestedMsg(){
+        Message msg;
+        msg = new Message(eOperationType.OPERATION_NOT_INTERESTED.GetVal());
+
+        return SendObj(msg, "IOException occurred while sending Interested message.");
+    }
+
+    private eSocketReturns ProcessPeerInterestState (){
+        if (IsPeerInteresting())
+            return SendInterestedMsg ();
+        else
+            return SendNotInterestedMsg ();
+    }
+
     /**
      * <p>
      *     The function is responsible for handling the Piece/Packet sent by the client in response for the request made from the server
@@ -428,7 +460,7 @@ public class AppController extends Thread {
 
         //DebugState (pMsg.PieceId, false);
 
-        return  eSocketReturns.E_SOCRET_SUCCESS;
+        return  ProcessPeerInterestState();
     }
 
     /**
@@ -471,7 +503,7 @@ public class AppController extends Thread {
         // log the message as per specification
         Logger.GetLogger().Log(Calendar.getInstance().getTime().toString() + ": Peer " + PeerId + " received the 'have' message from " + ClientPeerId + " for the piece " + pMsg.PieceId);
 
-        return  eSocketReturns.E_SOCRET_SUCCESS;
+        return  ProcessPeerInterestState();
     }
 
     /**
@@ -486,7 +518,7 @@ public class AppController extends Thread {
 
         ResponseOutput ret;
 
-        ret = ReceiveObj("IOException occurred while de-serializing *** message.");
+        ret = ReceiveObj("IOException occurred while de-serializing message.");
 
         if (ret.Error == eSocketReturns.E_SOCRET_NOTHING_TO_READ)
             return  eSocketReturns.E_SOCRET_SUCCESS;
@@ -505,7 +537,29 @@ public class AppController extends Thread {
         if (ret.Response.OperationType == eOperationType.OPERATION_HAVE.GetVal())
             return ProcessHaveRequest ((HaveMessage) ret.Response);
 
+        if (ret.Response.OperationType == eOperationType.OPERATION_NOT_INTERESTED.GetVal())
+            return ProcessInterestingRequest(ret.Response);
+
+        if (ret.Response.OperationType == eOperationType.OPERATION_INTERESTED.GetVal())
+            return ProcessNotInterestingRequest((Message) ret.Response);
+
         return eSocketReturns.E_SOCRET_FAILED;
+    }
+
+    eSocketReturns ProcessNotInterestingRequest(Message pMsg){
+
+        // log the message as per specification
+        Logger.GetLogger().Log(Calendar.getInstance().getTime().toString() + ": Peer " + PeerId + " received the 'interested’ message from " + ClientPeerId + ".");
+
+        return eSocketReturns.E_SOCRET_SUCCESS;
+    }
+
+    eSocketReturns ProcessInterestingRequest(Message pMsg){
+
+        // log the message as per specification
+        Logger.GetLogger().Log(Calendar.getInstance().getTime().toString() + ": Peer " + PeerId + " received the 'not interested’ message from " + ClientPeerId + ".");
+
+        return eSocketReturns.E_SOCRET_SUCCESS;
     }
 
     class RanPosSelectionNode {
@@ -550,7 +604,7 @@ public class AppController extends Thread {
         return true;
     }
 
-    private ArrayList GetInterestingBitsetList (){
+    private ArrayList GetInterestingBitsetList (boolean pGetFirstInterestOnly){
 
         ArrayList   posOption = new ArrayList();
         int         clientBits;
@@ -573,6 +627,10 @@ public class AppController extends Thread {
                 node.Position = iter;
                 node.Value    = candidateBits;
                 posOption.add(node);
+
+                // the client is interested in only the first interest point
+                if (pGetFirstInterestOnly == true)
+                    return posOption;
             }
         }
 
@@ -586,7 +644,7 @@ public class AppController extends Thread {
         int         bitPosition;
         int         reserveBit;
 
-        posOption = GetInterestingBitsetList();
+        posOption = GetInterestingBitsetList(false);
 
         // try to reserve an interesting packet for request from client
         do {
@@ -683,7 +741,7 @@ public class AppController extends Thread {
             ClientData.NumPiecesAvailable = 0;
         }
 
-        return  eSocketReturns.E_SOCRET_SUCCESS;
+        return  ProcessPeerInterestState ();
     }
 
     /**
