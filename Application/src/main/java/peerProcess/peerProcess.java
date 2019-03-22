@@ -46,7 +46,7 @@ public class peerProcess {
         Integer PeerId;
         String HostName;
         int PortNumber;
-        int NumPiecesAvailable;
+        AtomicInteger NumPiecesAvailable = new AtomicInteger(0);
         boolean HasFile;
         boolean HasFullFile;
         AtomicIntegerArray FileState = null;
@@ -246,9 +246,9 @@ public class peerProcess {
                     DatFile.setLength(0);
 
                 if (peerData.PeerId == MyPeerId && peerData.HasFile) {
-                    peerData.NumPiecesAvailable = pktCount;
+                    peerData.NumPiecesAvailable.set(pktCount);
                 } else
-                    peerData.NumPiecesAvailable = 0;
+                    peerData.NumPiecesAvailable.set(0);
 
                 peerData.FileState = new AtomicIntegerArray(arraySize);
                 peerData.RequestedFileState = new AtomicIntegerArray(arraySize);
@@ -265,6 +265,8 @@ public class peerProcess {
                         peerData.FileState.set(iter, (iter + 1 == arraySize) ? lastblockval : 0);
                         peerData.HasFullFile = false;
                     }
+
+                    peerData.RequestedFileState.set(iter, (iter + 1 == arraySize) ? lastblockval : 0);
                 }
 
                 // adding the peer information to a list fou later use
@@ -382,11 +384,11 @@ public class peerProcess {
             }
         }
 
-        Comparator<QueueData> comparator = new QueueComparator();
 
-        PriorityQueue<QueueData> interestedPeers = new PriorityQueue<>(10, comparator);
-        QueueData temp;
-        int lastVal = Integer.MAX_VALUE;
+        Comparator<QueueData>      comparator = new QueueComparator();
+        PriorityQueue<QueueData>   interestedPeers = new PriorityQueue<>(10, comparator);
+        QueueData                  temp;
+        int                        lastVal = Integer.MAX_VALUE;
 
         // getting all interested peers
         for (Map.Entry<Integer, PeerConfigurationData> mapPair : PeerMap.entrySet()) {
@@ -403,9 +405,8 @@ public class peerProcess {
 
             } else {
 
-                // we have not interested companions here its better to choke them if they are
-                // not already chocked
-                if (!mapPair.getValue().IsChocked.get()) {
+                // we have not interested companions here its better to choke them if they are not already chocked
+                if (!mapPair.getValue().IsChocked.get() && mapPair.getValue().PeerId != OptUnchokedPeerId){
 
                     mapPair.getValue().IsChocked.set(true);
                     // its our responsibility to inform them
@@ -414,11 +415,13 @@ public class peerProcess {
             }
         }
 
-        if (interestedPeers.size() > 1) {
+
+        if (interestedPeers.size() > 0){
 
             int count = PreferredNeighbourCount;
 
-            while (count > 0 && interestedPeers.size() > 1) {
+            while (count > 0 && interestedPeers.size() > 0){
+
                 count--;
 
                 temp = interestedPeers.peek();
@@ -444,7 +447,8 @@ public class peerProcess {
         }
 
         // mark all the remaining as chocked
-        while (interestedPeers.size() > 1) {
+        while (interestedPeers.size() > 0){
+
             temp = interestedPeers.peek();
 
             if (InDebug) {
@@ -463,6 +467,9 @@ public class peerProcess {
 
             interestedPeers.remove(temp);
         }
+
+        // update the time so that the function gets called again when time expires
+        LastChokeUpdateTime = Calendar.getInstance().getTimeInMillis();
     }
 
     private void SelectOptimisticNode() {
@@ -471,23 +478,20 @@ public class peerProcess {
         PeerConfigurationData peer;
         int retryCount = 0;
 
-        if (OptUnchokedPeerId > 0)
-            PeerMap.get(OptUnchokedPeerId).IsChocked.set(true);
 
-        while (true) {
+        while (true){
 
             retryCount++;
 
-            randomPos = (int) Math.random() * PeerMap.size();
+            randomPos = (int)(Math.random()*100)%PeerMap.size();
 
             keySet = PeerMap.keySet();
 
             peer = PeerMap.get(keySet.toArray()[randomPos]);
 
             // cannot select only interested and chocked neighbours
-            // note : the retry count is provided in case all the nodes are un-chocked due
-            // to defined configurations
-            if (peer.IsInterested.get() && !peer.IsChocked.get() && peer.PeerId != MyPeerId)
+            // note : the retry count is provided in case all the nodes are un-chocked due to defined configurations
+            if (peer.IsInterested.get() && peer.IsChocked.get() && peer.PeerId != MyPeerId)
                 break;
             else if (retryCount > PeerMap.size()) {
                 peer = null;
@@ -498,24 +502,33 @@ public class peerProcess {
         // TODO Do something with the selected peer
         if (peer != null) {
 
-            if (peer.PeerId != OptUnchokedPeerId) {
+            if (OptUnchokedPeerId != peer.PeerId ) {
+
+                if (OptUnchokedPeerId >= 0) {
+                    PeerMap.get(OptUnchokedPeerId).IsChocked.set(true);
+                    PeerMap.get(OptUnchokedPeerId).SendChokeInfo.set(true);
+                }
+
                 OptUnchokedPeerId = peer.PeerId;
+
+                peer.IsChocked.set(false);
                 peer.SendChokeInfo.set(true);
             }
 
-            peer.IsChocked.set(false);
-
         } else
             OptUnchokedPeerId = -1;
+
+        // update the time so that the function gets called again when time expires
+        LastOptimisticUnchokingIntervalUpdateTime = Calendar.getInstance().getTimeInMillis();
     }
 
     private void MakeChokeRelatedAmends() {
 
-        if (LastChokeUpdateTime - Calendar.getInstance().getTimeInMillis() >= UnchockingInterval)
+        if (Calendar.getInstance().getTimeInMillis() - LastChokeUpdateTime  >= UnchockingInterval)
             DoUnChokedNodeReselection();
 
-        if (LastOptimisticUnchokingIntervalUpdateTime
-                - Calendar.getInstance().getTimeInMillis() >= OptimisticUnchokingInterval)
+        if (Calendar.getInstance().getTimeInMillis()
+                - LastOptimisticUnchokingIntervalUpdateTime >= OptimisticUnchokingInterval)
             SelectOptimisticNode();
     }
 

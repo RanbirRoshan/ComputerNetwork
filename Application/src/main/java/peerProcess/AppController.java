@@ -118,6 +118,11 @@ public class AppController extends Thread {
             if (ret != eSocketReturns.E_SOCRET_SUCCESS)
                 return ret;
 
+            try {
+                Thread.sleep(10);
+            }catch (Exception e){
+                System.out.println("Exception" + e.getMessage());
+            }
         } while (true);
 
         // return eSocketReturns.E_SOCRET_SUCCESS;
@@ -177,31 +182,6 @@ public class AppController extends Thread {
      */
     private eSocketReturns BroadcastActivity() {
         return BroadcastHaveData();
-    }
-
-    /**
-     * <p>
-     * The procedure finds the most significant bit that is not set in the input.
-     * The returned value is the position of the bit starting from the MSB as 0.
-     * </p>
-     *
-     * @implNote The function assumes that there is at least a bit taht is not set
-     *           in the given integer value
-     *
-     * @param pValue The input integer value for calculation
-     * @return The position
-     */
-    private byte GetBitSetPos(int pValue) {
-
-        int val = ~pValue;
-        byte ans = 0;
-
-        while (val != 0) {
-            val = val >>> 1;
-            ans++;
-        }
-
-        return (byte) (peerProcess.BitPerBufVal - ans);
     }
 
     /**
@@ -310,8 +290,10 @@ public class AppController extends Thread {
 
         msg.PieceId = pPieceId;
 
-        if (ClientData.IsChocked.get())
+        if (ClientData.IsChocked.get()) {
+            sendChokeInfo();
             return eSocketReturns.E_SOCRET_SUCCESS;
+        }
 
         try {
 
@@ -389,10 +371,7 @@ public class AppController extends Thread {
 
         list = GetInterestingBitsetList(true);
 
-        if (list.size() < 1)
-            return false;
-
-        return true;
+        return list.size() >= 1;
     }
 
     private eSocketReturns SendInterestedMsg() {
@@ -446,11 +425,16 @@ public class AppController extends Thread {
         // online peers
         HaveBroadcastList.AddForBroadcast(eOperationType.OPERATION_HAVE.GetVal(), pMsg.PieceId);
 
+        do {
+            originalval = SelfData.NumPiecesAvailable.get();
+            updatedval = originalval + 1;
+        }while(!SelfData.NumPiecesAvailable.compareAndSet(originalval,updatedval));
+
         // logging as per the specification
         Logger.GetLogger()
                 .Log(Calendar.getInstance().getTime().toString() + ": Peer " + PeerId + " has downloaded the piece "
                         + pMsg.PieceId + " from  " + ClientPeerId + ". Now the number of pieces it has is "
-                        + ++(SelfData.NumPiecesAvailable));
+                        + updatedval);
 
         try {
             DatFile.seek(pMsg.PieceId * peerProcess.PieceSize);
@@ -463,7 +447,7 @@ public class AppController extends Thread {
         // any other client
         do {
             originalval = SelfData.FileState.get(pMsg.PieceId / peerProcess.BitPerBufVal);
-            updatedval = originalval | (1 << peerProcess.BitPerBufVal - pMsg.PieceId % peerProcess.BitPerBufVal - 1);
+            updatedval = originalval | (1 << (peerProcess.BitPerBufVal - (pMsg.PieceId % peerProcess.BitPerBufVal) - 1));
         } while (!SelfData.FileState.compareAndSet(pMsg.PieceId / peerProcess.BitPerBufVal, originalval, updatedval));
 
         // DebugState (pMsg.PieceId, false);
@@ -500,18 +484,23 @@ public class AppController extends Thread {
      */
     private eSocketReturns ProcessHaveRequest(HaveMessage pMsg) {
 
+        int origVal;
+        int updatedVal;
+
         // the below scenario is not possible
         if (pMsg.PieceId < 0)
             return PrintErrorMessageToConsole("Piece Request With Invalid Content");
 
-        // BUG update the client piece bit for the given piece ID the operation is safe
-        // as no other thread will touch this data apart from this
-        ClientData.FileState.set(pMsg.PieceId / peerProcess.BitPerBufVal,
-                ClientData.FileState.get(pMsg.PieceId / peerProcess.BitPerBufVal)
-                        | (1 << (peerProcess.BitPerBufVal - (pMsg.PieceId % peerProcess.BitPerBufVal) - 1)));
+        do {
+            origVal = ClientData.FileState.get(pMsg.PieceId/peerProcess.BitPerBufVal);
+            updatedVal = origVal | (1 << (peerProcess.BitPerBufVal - (pMsg.PieceId%peerProcess.BitPerBufVal) - 1));
+        }while (!ClientData.FileState.compareAndSet(pMsg.PieceId/peerProcess.BitPerBufVal, origVal, updatedVal));
 
         // BUG the number of pieces with the client has increased by 1
-        ClientData.NumPiecesAvailable++;
+        do {
+            origVal = ClientData.NumPiecesAvailable.get();
+            updatedVal = origVal + 1;
+        }while (!ClientData.NumPiecesAvailable.compareAndSet(origVal, updatedVal));
 
         // log the message as per specification
         Logger.GetLogger().Log(Calendar.getInstance().getTime().toString() + ": Peer " + PeerId
@@ -554,16 +543,16 @@ public class AppController extends Thread {
             return ProcessHaveRequest((HaveMessage) ret.Response);
 
         if (ret.Response.OperationType == eOperationType.OPERATION_NOT_INTERESTED.GetVal())
-            return ProcessInterestingRequest(ret.Response);
+            return ProcessNotInterestingRequest(ret.Response);
 
         if (ret.Response.OperationType == eOperationType.OPERATION_INTERESTED.GetVal())
-            return ProcessNotInterestingRequest((Message) ret.Response);
+            return ProcessInterestingRequest((Message) ret.Response);
 
         if (ret.Response.OperationType == eOperationType.OPERATION_CHOKE.GetVal()) {
             return ProcessChoke();
         }
 
-        if (ret.Response.OperationType == eOperationType.OPERATION_CHOKE.GetVal()) {
+        if (ret.Response.OperationType == eOperationType.OPERATION_UNCHOKE.GetVal()) {
             ClientData.IsChokedByPeer = false;
             return eSocketReturns.E_SOCRET_SUCCESS;
         }
@@ -575,7 +564,7 @@ public class AppController extends Thread {
 
         // log the message as per specification
         Logger.GetLogger().Log(Calendar.getInstance().getTime().toString() + ": Peer " + PeerId
-                + " received the 'interested’ message from " + ClientPeerId + ".");
+                + " received the 'not interested' message from " + ClientPeerId + ".");
 
         ClientData.IsInterested.set(false);
 
@@ -586,25 +575,25 @@ public class AppController extends Thread {
 
         // log the message as per specification
         Logger.GetLogger().Log(Calendar.getInstance().getTime().toString() + ": Peer " + PeerId
-                + " received the 'not interested’ message from " + ClientPeerId + ".");
+                + " received the 'interested’ message from " + ClientPeerId + ".");
 
         ClientData.IsInterested.set(true);
 
         return eSocketReturns.E_SOCRET_SUCCESS;
     }
 
-    eSocketReturns ProcessChoke() {
+    private eSocketReturns ProcessChoke() {
         ClientData.IsChokedByPeer = true;
 
         if (RequestedPieceId >= 0) {
             int index = (int) (RequestedPieceId / peerProcess.BitPerBufVal);
             int pos = RequestedPieceId % peerProcess.BitPerBufVal;
-            int updateBit = 1 << (peerProcess.BitPerBufVal - 1 - pos);
+            int updateBit = ~(1 << (peerProcess.BitPerBufVal - 1 - pos));
 
             int originalVal, newVal;
             do {
                 originalVal = SelfData.RequestedFileState.get(index);
-                newVal = originalVal ^ updateBit;
+                newVal = originalVal & updateBit;
             } while (!SelfData.RequestedFileState.compareAndSet(index, originalVal, newVal));
 
             RequestedPieceId = -1;
@@ -679,7 +668,7 @@ public class AppController extends Thread {
                 posOption.add(node);
 
                 // the client is interested in only the first interest point
-                if (pGetFirstInterestOnly == true)
+                if (pGetFirstInterestOnly)
                     return posOption;
             }
         }
@@ -731,6 +720,8 @@ public class AppController extends Thread {
     private eSocketReturns sendChokeInfo() {
         Message msg;
 
+        ClientData.SendChokeInfo.set(false);
+
         if (ClientData.IsChocked.get())
             msg = new Message(eOperationType.OPERATION_CHOKE.GetVal());
         else
@@ -748,14 +739,14 @@ public class AppController extends Thread {
 
         // If supposed to inform and request send choke info returns bad value then
         // return fail
-        if (ClientData.SendChokeInfo.get() && eSocketReturns.E_SOCRET_SUCCESS == sendChokeInfo()) {
+        if (ClientData.SendChokeInfo.get() && eSocketReturns.E_SOCRET_SUCCESS != sendChokeInfo()) {
             return eSocketReturns.E_SOCRET_FAILED;
         }
 
         // a new request is not sent till the state of last requested packet is
         // determined. This is treated as a success as waiting for a response is not an
         // error
-        if (RequestedPieceId <  && ClientData.IsChokedByPeer)
+        if (RequestedPieceId >= 0 || ClientData.IsChokedByPeer)
             return eSocketReturns.E_SOCRET_SUCCESS;
 
         packet_num = GetRandomPieceIdToRequest();
@@ -816,7 +807,7 @@ public class AppController extends Thread {
 
         for (int iter = 0; iter < ClientData.FileState.length(); iter++) {
             // count the number of packets the client already has
-            ClientData.NumPiecesAvailable = 0;
+            ClientData.NumPiecesAvailable.set(0);
         }
 
         return ProcessPeerInterestState();

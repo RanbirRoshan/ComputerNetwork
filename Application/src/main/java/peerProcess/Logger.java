@@ -68,7 +68,7 @@ public class Logger {
 
             Files.createFile(pPath);
 
-            vFile = new RandomAccessFile(newFile, "rw");
+            vFile = new RandomAccessFile(newFile, "rws");
 
             fChannel = vFile.getChannel();
 
@@ -287,6 +287,7 @@ public class Logger {
             // must not allow file write in parallel
             gMutexlock.acquire();
             vFile.write(pLogMessage.getBytes());
+            System.out.println(pLogMessage);
             gMutexlock.release();
         }
         catch (IOException | InterruptedException e){
