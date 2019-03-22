@@ -3,8 +3,6 @@
  */
 package peerProcess;
 
-
-
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.RandomAccessFile;
@@ -24,67 +22,70 @@ public class peerProcess {
 
     private static final boolean InDebug = true;
 
-    private final String        ConfigFileName  = "Common.cfg";
-    private final String        PeerInfoFile    = "PeerInfo.cfg";
+    private final String ConfigFileName = "Common.cfg";
+    private final String PeerInfoFile = "PeerInfo.cfg";
 
-    private int                 PreferredNeighbourCount;
-    private int                 UnchockingInterval;
-    private int                 OptimisticUnchokingInterval;
-    static String               FileName;
-    private RandomAccessFile    DatFile;
-    private int                 FileSize;
-    static int                  PieceSize;
-    private AtomicBoolean       TaskComplete;
-    private int                 MyPeerId;
-    static final int            BitPerBufVal = Integer.SIZE;
-    private BroadcastStruct     HaveBroadCastList;
-    private long                LastChokeUpdateTime;
-    private long                LastOptimisticUnchokingIntervalUpdateTime;
-    private int                 OptUnchokedPeerId;
+    private int PreferredNeighbourCount;
+    private int UnchockingInterval;
+    private int OptimisticUnchokingInterval;
+    static String FileName;
+    private RandomAccessFile DatFile;
+    private int FileSize;
+    static int PieceSize;
+    private AtomicBoolean TaskComplete;
+    private int MyPeerId;
+    static final int BitPerBufVal = Integer.SIZE;
+    private BroadcastStruct HaveBroadCastList;
+    private long LastChokeUpdateTime;
+    private long LastOptimisticUnchokingIntervalUpdateTime;
+    private int OptUnchokedPeerId;
 
-    static LinkedHashMap <Integer, PeerConfigurationData> PeerMap;
+    static LinkedHashMap<Integer, PeerConfigurationData> PeerMap;
 
     class PeerConfigurationData {
-        Integer             PeerId;
-        String              HostName;
-        int                 PortNumber;
-        int                 NumPiecesAvailable;
-        boolean             HasFile;
-        boolean             HasFullFile;
-        AtomicIntegerArray  FileState       = null;
-        AtomicBoolean       IsChocked       = new AtomicBoolean();
-        AtomicBoolean       SendChokeInfo   = new AtomicBoolean();
-        AtomicBoolean       IsInterested    = new AtomicBoolean(false);
-        AtomicIntegerArray  RequestedFileState  = null;
-        AtomicInteger       ReceivedPiecesCount = new AtomicInteger(0);
+        Integer PeerId;
+        String HostName;
+        int PortNumber;
+        int NumPiecesAvailable;
+        boolean HasFile;
+        boolean HasFullFile;
+        AtomicIntegerArray FileState = null;
+        AtomicBoolean IsChocked = new AtomicBoolean();
+        AtomicBoolean SendChokeInfo = new AtomicBoolean();
+        AtomicBoolean IsInterested = new AtomicBoolean(false);
+        AtomicIntegerArray RequestedFileState = null;
+        AtomicInteger ReceivedPiecesCount = new AtomicInteger(0);
+        Boolean IsChokedByPeer = false;
     }
 
-    private peerProcess (int pPeerId) {
+    private peerProcess(int pPeerId) {
 
-        FileSize    = 0;
-        PieceSize   = 0;
-        MyPeerId    = pPeerId;
-        FileName    = null;
+        FileSize = 0;
+        PieceSize = 0;
+        MyPeerId = pPeerId;
+        FileName = null;
 
-        TaskComplete        = new AtomicBoolean(false);
-        HaveBroadCastList   = new BroadcastStruct();
-        OptUnchokedPeerId   = -1;
+        TaskComplete = new AtomicBoolean(false);
+        HaveBroadCastList = new BroadcastStruct();
+        OptUnchokedPeerId = -1;
 
-        // adding a dummy list for everyone to have an initial list to start with if we dont have it we will land into
-        // trouble as the threads that start at same time with no initial input will not know the first broadcast message
-        HaveBroadCastList.AddForBroadcast((byte)-1, null);
+        // adding a dummy list for everyone to have an initial list to start with if we
+        // dont have it we will land into
+        // trouble as the threads that start at same time with no initial input will not
+        // know the first broadcast message
+        HaveBroadCastList.AddForBroadcast((byte) -1, null);
 
         LastChokeUpdateTime = 0;
         LastOptimisticUnchokingIntervalUpdateTime = 0;
 
         OptimisticUnchokingInterval = 0;
-        UnchockingInterval          = 0;
-        PreferredNeighbourCount     = 0;
+        UnchockingInterval = 0;
+        PreferredNeighbourCount = 0;
 
-        PeerMap = new LinkedHashMap <Integer, PeerConfigurationData>();
+        PeerMap = new LinkedHashMap<Integer, PeerConfigurationData>();
     }
 
-    private boolean Initialize () {
+    private boolean Initialize() {
 
         if (!ReadConfigurations())
             return false;
@@ -92,25 +93,27 @@ public class peerProcess {
         if (Logger.GetLogger().Initialize(MyPeerId) != eLoggerErrors.E_LE_SUCCESS)
             return false;
 
-        Logger.GetLogger().Log ("Program start time: " + new SimpleDateFormat ("mm/dd/yyyy HH:mm:ss").format ((Calendar.getInstance().getTime())));
+        Logger.GetLogger().Log("Program start time: "
+                + new SimpleDateFormat("mm/dd/yyyy HH:mm:ss").format((Calendar.getInstance().getTime())));
 
         return true;
     }
 
-    private static boolean CheckFileIsMissing (String pFileName){
+    private static boolean CheckFileIsMissing(String pFileName) {
 
-        if (Files.notExists(Paths.get (pFileName))){
-            System.out.println ("Missing file: \"" + pFileName + "\" at location: \"" + Paths.get(".").toAbsolutePath().toString() + "\"");
+        if (Files.notExists(Paths.get(pFileName))) {
+            System.out.println("Missing file: \"" + pFileName + "\" at location: \""
+                    + Paths.get(".").toAbsolutePath().toString() + "\"");
             return true;
         }
 
         return false;
     }
 
-    private boolean ValidateConfigFileData ()
-    {
+    private boolean ValidateConfigFileData() {
         // validate the configurations
-        if (PreferredNeighbourCount < 1 || UnchockingInterval < 1 || OptimisticUnchokingInterval < 1 || FileSize < 1 || PieceSize < 1) {
+        if (PreferredNeighbourCount < 1 || UnchockingInterval < 1 || OptimisticUnchokingInterval < 1 || FileSize < 1
+                || PieceSize < 1) {
 
             System.out.println("One of the configuration is file \"" + ConfigFileName + "\" is incorrect.");
             return false;
@@ -124,24 +127,25 @@ public class peerProcess {
 
         try {
             DatFile = new RandomAccessFile(new java.io.File(FileName), "rw");
-        } catch (FileNotFoundException ex){
+        } catch (FileNotFoundException ex) {
 
             System.out.println("Failed to open data file for IO.");
             return false;
         }
-        /*if (Files.size(Paths.get(FileName)) != FileSize){
-
-            System.out.println ("The file size specified in configuration and size of actual file does not match.");
-            return false;
-        }*/
+        /*
+         * if (Files.size(Paths.get(FileName)) != FileSize){
+         * 
+         * System.out.println
+         * ("The file size specified in configuration and size of actual file does not match."
+         * ); return false; }
+         */
 
         return true;
     }
 
-    private boolean ReadConfigFile ()
-    {
-        Scanner     fileScanner;
-        String      configLabel;
+    private boolean ReadConfigFile() {
+        Scanner fileScanner;
+        String configLabel;
 
         try {
             fileScanner = new Scanner(Paths.get(ConfigFileName));
@@ -152,69 +156,69 @@ public class peerProcess {
 
                 // updating the relevant configuration based on the config label
                 switch (configLabel) {
-                    case "NumberOfPreferredNeighbors":
-                        PreferredNeighbourCount = fileScanner.nextInt();
-                        break;
+                case "NumberOfPreferredNeighbors":
+                    PreferredNeighbourCount = fileScanner.nextInt();
+                    break;
 
-                    case "UnchokingInterval":
-                        UnchockingInterval = fileScanner.nextInt() * 1000;
-                        LastChokeUpdateTime = -1 * UnchockingInterval;
-                        break;
+                case "UnchokingInterval":
+                    UnchockingInterval = fileScanner.nextInt() * 1000;
+                    LastChokeUpdateTime = -1 * UnchockingInterval;
+                    break;
 
-                    case "OptimisticUnchokingInterval":
-                        OptimisticUnchokingInterval = fileScanner.nextInt() * 1000;
-                        LastOptimisticUnchokingIntervalUpdateTime = OptimisticUnchokingInterval * -1;
-                        break;
+                case "OptimisticUnchokingInterval":
+                    OptimisticUnchokingInterval = fileScanner.nextInt() * 1000;
+                    LastOptimisticUnchokingIntervalUpdateTime = OptimisticUnchokingInterval * -1;
+                    break;
 
-                    case "FileName":
-                        FileName = fileScanner.next();
-                        break;
+                case "FileName":
+                    FileName = fileScanner.next();
+                    break;
 
-                    case "FileSize":
-                        FileSize = fileScanner.nextInt();
-                        break;
+                case "FileSize":
+                    FileSize = fileScanner.nextInt();
+                    break;
 
-                    case "PieceSize":
-                        PieceSize = fileScanner.nextInt();
-                        break;
+                case "PieceSize":
+                    PieceSize = fileScanner.nextInt();
+                    break;
 
-                    default:
-                        System.out.println("Invalid configuration value: " + configLabel);
-                        return false;
+                default:
+                    System.out.println("Invalid configuration value: " + configLabel);
+                    return false;
                 }
             }
-        }
-        catch (IOException ex){
-            System.out.println ("Unable to open configuration file : \"" + ConfigFileName + "\".");
-            System.out.println (ex.getMessage());
+        } catch (IOException ex) {
+            System.out.println("Unable to open configuration file : \"" + ConfigFileName + "\".");
+            System.out.println(ex.getMessage());
             return false;
         }
 
         return ValidateConfigFileData();
     }
 
-    private boolean ReadPeerFile (){
+    private boolean ReadPeerFile() {
 
         try {
 
             Scanner fileScanner = new Scanner(Paths.get(PeerInfoFile));
 
-            while (fileScanner.hasNext()){
+            while (fileScanner.hasNext()) {
 
-                int     arraySize;
-                int     pktCount;
-                int     lastblockval = 0;
+                int arraySize;
+                int pktCount;
+                int lastblockval = 0;
 
                 PeerConfigurationData peerData;
 
                 peerData = new PeerConfigurationData();
 
-                peerData.PeerId     = fileScanner.nextInt();
-                peerData.HostName   = fileScanner.next();
+                peerData.PeerId = fileScanner.nextInt();
+                peerData.HostName = fileScanner.next();
                 peerData.PortNumber = fileScanner.nextInt();
-                peerData.HasFile    = (fileScanner.nextInt() == 1);
+                peerData.HasFile = (fileScanner.nextInt() == 1);
 
-                // the application assumes the client to be un-interested until explicitly informed
+                // the application assumes the client to be un-interested until explicitly
+                // informed
                 if (peerData.PeerId != MyPeerId)
                     peerData.IsInterested.set(true);
 
@@ -224,12 +228,13 @@ public class peerProcess {
                 // no choke info is sent by default
                 peerData.SendChokeInfo.set(false);
 
-                pktCount    = FileSize/PieceSize + ((FileSize%PieceSize > 0)?1:0);
+                pktCount = FileSize / PieceSize + ((FileSize % PieceSize > 0) ? 1 : 0);
 
-                if (pktCount%BitPerBufVal> 0) {
+                if (pktCount % BitPerBufVal > 0) {
 
-                    // set the last few bits of the last block if they are not present in file it will prevent us from repeated checking if we have reached beyond the end
-                    for (int iter = BitPerBufVal  - pktCount%BitPerBufVal ; iter > 0; iter--)
+                    // set the last few bits of the last block if they are not present in file it
+                    // will prevent us from repeated checking if we have reached beyond the end
+                    for (int iter = BitPerBufVal - pktCount % BitPerBufVal; iter > 0; iter--)
                         lastblockval = (lastblockval << 1) + 1;
 
                     arraySize = pktCount / BitPerBufVal + 1;
@@ -237,27 +242,27 @@ public class peerProcess {
                     arraySize = pktCount / BitPerBufVal;
                 }
 
-                if(peerData.PeerId == MyPeerId && !peerData.HasFile)
+                if (peerData.PeerId == MyPeerId && !peerData.HasFile)
                     DatFile.setLength(0);
 
-                if(peerData.PeerId == MyPeerId && peerData.HasFile) {
+                if (peerData.PeerId == MyPeerId && peerData.HasFile) {
                     peerData.NumPiecesAvailable = pktCount;
-                }else
+                } else
                     peerData.NumPiecesAvailable = 0;
 
-                peerData.FileState          = new AtomicIntegerArray(arraySize);
+                peerData.FileState = new AtomicIntegerArray(arraySize);
                 peerData.RequestedFileState = new AtomicIntegerArray(arraySize);
 
-                for (int iter = 0; iter < arraySize; iter++){
+                for (int iter = 0; iter < arraySize; iter++) {
 
-                    // if the application has full file it will initialize its file state as all bit set to 1
-                    if(peerData.PeerId == MyPeerId && peerData.HasFile) {
+                    // if the application has full file it will initialize its file state as all bit
+                    // set to 1
+                    if (peerData.PeerId == MyPeerId && peerData.HasFile) {
                         peerData.FileState.set(iter, -1);
-                        peerData.HasFullFile     = true;
-                    }
-                    else {// the value is yer to be discovered by the application protocol
+                        peerData.HasFullFile = true;
+                    } else {// the value is yer to be discovered by the application protocol
 
-                        peerData.FileState.set(iter,(iter + 1 == arraySize)?lastblockval:0);
+                        peerData.FileState.set(iter, (iter + 1 == arraySize) ? lastblockval : 0);
                         peerData.HasFullFile = false;
                     }
                 }
@@ -265,10 +270,9 @@ public class peerProcess {
                 // adding the peer information to a list fou later use
                 PeerMap.put(peerData.PeerId, peerData);
             }
-        }
-        catch (IOException ex){
-            System.out.println ("Unable to open the configuration file: \"" + PeerInfoFile +"\".");
-            System.out.println (ex.getMessage());
+        } catch (IOException ex) {
+            System.out.println("Unable to open the configuration file: \"" + PeerInfoFile + "\".");
+            System.out.println(ex.getMessage());
             return false;
         }
 
@@ -278,11 +282,12 @@ public class peerProcess {
     /**
      * Reads both the configuration files and populates the app variables.
      *
-     * @return true when the configurations are successfully read and false otherwise.
+     * @return true when the configurations are successfully read and false
+     *         otherwise.
      */
-    private boolean ReadConfigurations () {
+    private boolean ReadConfigurations() {
 
-        if (CheckFileIsMissing (ConfigFileName))
+        if (CheckFileIsMissing(ConfigFileName))
             return false;
 
         if (CheckFileIsMissing(PeerInfoFile))
@@ -293,21 +298,21 @@ public class peerProcess {
 
     public static void main(String[] args) {
 
-        peerProcess     myApp = new peerProcess(Integer.parseInt(args[0]));
+        peerProcess myApp = new peerProcess(Integer.parseInt(args[0]));
 
         if (!myApp.Initialize())
             return;
 
-        //the application can go multithreaded beyond this point
-        myApp.Execute ();
+        // the application can go multithreaded beyond this point
+        myApp.Execute();
 
         myApp.CleanUp();
     }
 
-    private void CleanUp ()
-    {
-        Logger.GetLogger().Log ("Program termination time: " + new SimpleDateFormat ("mm/dd/yyyy HH:mm:ss").format ((Calendar.getInstance().getTime())));
-        Logger.GetLogger().Close ();
+    private void CleanUp() {
+        Logger.GetLogger().Log("Program termination time: "
+                + new SimpleDateFormat("mm/dd/yyyy HH:mm:ss").format((Calendar.getInstance().getTime())));
+        Logger.GetLogger().Close();
     }
 
     /**
@@ -315,12 +320,12 @@ public class peerProcess {
      *
      * @return true if all peers have full file, else false
      */
-    private boolean AllPeersHaveFile (){
+    private boolean AllPeersHaveFile() {
 
         for (Map.Entry<Integer, PeerConfigurationData> mapPair : PeerMap.entrySet()) {
 
             // if any of the peer does not have full file return false
-            for ( int iter = mapPair.getValue().FileState.length() - 1; iter >= 0; iter --){
+            for (int iter = mapPair.getValue().FileState.length() - 1; iter >= 0; iter--) {
                 if (mapPair.getValue().FileState.get(iter) != -1)
                     return false;
             }
@@ -329,34 +334,35 @@ public class peerProcess {
         return true;
     }
 
-    private boolean ConnectToKnownHosts()
-    {
-        Iterator    iter = PeerMap.entrySet().iterator();
-        Socket      newSocket;
-        Thread      newThread;
+    private boolean ConnectToKnownHosts() {
+        Iterator iter = PeerMap.entrySet().iterator();
+        Socket newSocket;
+        Thread newThread;
 
-        while (iter.hasNext()){
+        while (iter.hasNext()) {
 
-            Map.Entry  mapPair = (Map.Entry)iter.next();
+            Map.Entry mapPair = (Map.Entry) iter.next();
 
-            // the other socket after this are responsible for initiating connect to this instance
-            if (((PeerConfigurationData)mapPair.getValue()).PeerId == MyPeerId)
+            // the other socket after this are responsible for initiating connect to this
+            // instance
+            if (((PeerConfigurationData) mapPair.getValue()).PeerId == MyPeerId)
                 break;
 
             try {
-                newSocket = new Socket(InetAddress.getByName(((PeerConfigurationData) mapPair.getValue()).HostName), ((PeerConfigurationData) mapPair.getValue()).PortNumber);
+                newSocket = new Socket(InetAddress.getByName(((PeerConfigurationData) mapPair.getValue()).HostName),
+                        ((PeerConfigurationData) mapPair.getValue()).PortNumber);
 
-                newThread = new AppController (newSocket, MyPeerId, true, HaveBroadCastList);
+                newThread = new AppController(newSocket, MyPeerId, true, HaveBroadCastList);
 
-                // thread is marked as daemon. Only the main thread is non daemon. But is blocked for all task to complete. If all task is complete we quit :)
+                // thread is marked as daemon. Only the main thread is non daemon. But is
+                // blocked for all task to complete. If all task is complete we quit :)
                 newThread.setDaemon(true);
 
                 newThread.start();
-            }
-            catch (IOException ex){
-                System.out.println ("*******************EXCEPTION*******************");
-                System.out.println ("IOException occurred while creating socket.");
-                System.out.println (ex.getMessage());
+            } catch (IOException ex) {
+                System.out.println("*******************EXCEPTION*******************");
+                System.out.println("IOException occurred while creating socket.");
+                System.out.println(ex.getMessage());
             }
 
         }
@@ -364,41 +370,42 @@ public class peerProcess {
         return true;
     }
 
-    private void DoUnChokedNodeReselection()
-    {
-        class QueueData{
-            int                             Val;
-            private PeerConfigurationData   Peer;
+    private void DoUnChokedNodeReselection() {
+        class QueueData {
+            int Val;
+            private PeerConfigurationData Peer;
         }
 
         class QueueComparator implements Comparator<QueueData> {
-            public int compare (QueueData pVal1, QueueData pVal2){
-                return pVal1.Val-pVal2.Val;
+            public int compare(QueueData pVal1, QueueData pVal2) {
+                return pVal1.Val - pVal2.Val;
             }
         }
 
-        Comparator<QueueData>      comparator = new QueueComparator();
+        Comparator<QueueData> comparator = new QueueComparator();
 
-        PriorityQueue<QueueData>   interestedPeers = new PriorityQueue<>(10, comparator);
-        QueueData                  temp;
-        int                        lastVal = Integer.MAX_VALUE;
+        PriorityQueue<QueueData> interestedPeers = new PriorityQueue<>(10, comparator);
+        QueueData temp;
+        int lastVal = Integer.MAX_VALUE;
 
-        //getting all interested peers
+        // getting all interested peers
         for (Map.Entry<Integer, PeerConfigurationData> mapPair : PeerMap.entrySet()) {
 
-            if (mapPair.getValue().IsInterested.get() && mapPair.getValue().PeerId != OptUnchokedPeerId && mapPair.getValue().PeerId != MyPeerId){
+            if (mapPair.getValue().IsInterested.get() && mapPair.getValue().PeerId != OptUnchokedPeerId
+                    && mapPair.getValue().PeerId != MyPeerId) {
 
-                QueueData   data = new QueueData();
+                QueueData data = new QueueData();
 
                 data.Val = mapPair.getValue().ReceivedPiecesCount.get();
-                data.Peer    = mapPair.getValue();
+                data.Peer = mapPair.getValue();
 
                 interestedPeers.add(data);
 
             } else {
 
-                // we have not interested companions here its better to choke them if they are not already chocked
-                if (!mapPair.getValue().IsChocked.get()){
+                // we have not interested companions here its better to choke them if they are
+                // not already chocked
+                if (!mapPair.getValue().IsChocked.get()) {
 
                     mapPair.getValue().IsChocked.set(true);
                     // its our responsibility to inform them
@@ -407,18 +414,18 @@ public class peerProcess {
             }
         }
 
-        if (interestedPeers.size() > 1){
+        if (interestedPeers.size() > 1) {
 
             int count = PreferredNeighbourCount;
 
-            while (count > 0 && interestedPeers.size() > 1){
+            while (count > 0 && interestedPeers.size() > 1) {
                 count--;
 
                 temp = interestedPeers.peek();
 
-                if (InDebug){
+                if (InDebug) {
 
-                    if (lastVal < temp.Val){
+                    if (lastVal < temp.Val) {
                         System.out.println("Bug in Preferred neighbour selection.");
                     }
 
@@ -437,11 +444,11 @@ public class peerProcess {
         }
 
         // mark all the remaining as chocked
-        while (interestedPeers.size() > 1){
+        while (interestedPeers.size() > 1) {
             temp = interestedPeers.peek();
 
-            if (InDebug){
-                if (lastVal < temp.Val){
+            if (InDebug) {
+                if (lastVal < temp.Val) {
                     System.out.println("Bug in Preferred neighbour selection.");
                 }
                 lastVal = temp.Val;
@@ -458,37 +465,37 @@ public class peerProcess {
         }
     }
 
-    private void SelectOptimisticNode ()
-    {
-        int                     randomPos;
-        Set<Integer>            keySet;
-        PeerConfigurationData   peer;
-        int                     retryCount = 0;
+    private void SelectOptimisticNode() {
+        int randomPos;
+        Set<Integer> keySet;
+        PeerConfigurationData peer;
+        int retryCount = 0;
 
         if (OptUnchokedPeerId > 0)
             PeerMap.get(OptUnchokedPeerId).IsChocked.set(true);
-        
-        while (true){
+
+        while (true) {
 
             retryCount++;
 
-            randomPos = (int)Math.random()*PeerMap.size();
+            randomPos = (int) Math.random() * PeerMap.size();
 
             keySet = PeerMap.keySet();
 
             peer = PeerMap.get(keySet.toArray()[randomPos]);
 
             // cannot select only interested and chocked neighbours
-            // note : the retry count is provided in case all the nodes are un-chocked due to defined configurations
+            // note : the retry count is provided in case all the nodes are un-chocked due
+            // to defined configurations
             if (peer.IsInterested.get() && !peer.IsChocked.get() && peer.PeerId != MyPeerId)
                 break;
-            else if (retryCount > PeerMap.size()){
+            else if (retryCount > PeerMap.size()) {
                 peer = null;
                 break;
             }
         }
 
-        //TODO Do something with the selected peer
+        // TODO Do something with the selected peer
         if (peer != null) {
 
             if (peer.PeerId != OptUnchokedPeerId) {
@@ -502,83 +509,81 @@ public class peerProcess {
             OptUnchokedPeerId = -1;
     }
 
-    private void MakeChokeRelatedAmends ()
-    {
+    private void MakeChokeRelatedAmends() {
 
         if (LastChokeUpdateTime - Calendar.getInstance().getTimeInMillis() >= UnchockingInterval)
-            DoUnChokedNodeReselection ();
+            DoUnChokedNodeReselection();
 
-        if (LastOptimisticUnchokingIntervalUpdateTime - Calendar.getInstance().getTimeInMillis() >= OptimisticUnchokingInterval)
-            SelectOptimisticNode ();
+        if (LastOptimisticUnchokingIntervalUpdateTime
+                - Calendar.getInstance().getTimeInMillis() >= OptimisticUnchokingInterval)
+            SelectOptimisticNode();
     }
 
     /**
      * Initiates all the helping threads needed by the application
      *
      * <p>
-     *     To keep the wait time on the server thread minimum we are spawning other threads to perform other routine maintenance work
+     * To keep the wait time on the server thread minimum we are spawning other
+     * threads to perform other routine maintenance work
      * </p>
      */
-    private void InitiateCompletionWait ()
-    {
-        while (true){
+    private void InitiateCompletionWait() {
+        while (true) {
 
             try {
                 Thread.sleep(1000);
-            }
-            catch (InterruptedException ex) {
-                System.out.println ("*******************EXCEPTION*******************");
-                System.out.println ("IOException occurred while checking for task completion.");
-                System.out.println (ex.getMessage());
+            } catch (InterruptedException ex) {
+                System.out.println("*******************EXCEPTION*******************");
+                System.out.println("IOException occurred while checking for task completion.");
+                System.out.println(ex.getMessage());
             }
 
-            if (AllPeersHaveFile()){
-                TaskComplete.set (true);
+            if (AllPeersHaveFile()) {
+                TaskComplete.set(true);
                 break;
             }
 
-            MakeChokeRelatedAmends ();
+            MakeChokeRelatedAmends();
         }
     }
 
     /**
      * The actual operations starts here
      */
-    private void Execute ()
-    {
-        Runnable    listenerTask;
-        Thread      listenerThread;
+    private void Execute() {
+        Runnable listenerTask;
+        Thread listenerThread;
 
         listenerTask = new Runnable() {
 
             public void run() {
-                Thread      noob;
+                Thread noob;
 
                 try {
-                    ServerSocket    listeningSocket;
+                    ServerSocket listeningSocket;
                     listeningSocket = new ServerSocket(PeerMap.get(MyPeerId).PortNumber);
 
                     // the server would keep listening
-                    while (!TaskComplete.get()){
+                    while (!TaskComplete.get()) {
 
-                        noob = new AppController (listeningSocket.accept(), MyPeerId, false, HaveBroadCastList);
+                        noob = new AppController(listeningSocket.accept(), MyPeerId, false, HaveBroadCastList);
 
                         noob.setDaemon(true);
 
                         noob.start();
                     }
-                }
-                catch (IOException ex){
-                    System.out.println ("*******************EXCEPTION*******************");
-                    System.out.println ("IOException occurred while closing a connection.");
-                    System.out.println (ex.getMessage());
+                } catch (IOException ex) {
+                    System.out.println("*******************EXCEPTION*******************");
+                    System.out.println("IOException occurred while closing a connection.");
+                    System.out.println(ex.getMessage());
                 }
             }
         };
 
         listenerThread = new Thread(listenerTask, "peerProcessListner");
 
-        // listener thread is marked as daemon as if the main thread exits all task is complete so all threads except main thread are marked daemon
+        // listener thread is marked as daemon as if the main thread exits all task is
+        // complete so all threads except main thread are marked daemon
         listenerThread.setDaemon(true);
 
         listenerThread.start();
@@ -587,6 +592,6 @@ public class peerProcess {
             return;
 
         // wait till the task is actually completed i.e all peers have full file
-        InitiateCompletionWait ();
+        InitiateCompletionWait();
     }
 }

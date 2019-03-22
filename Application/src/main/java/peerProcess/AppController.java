@@ -7,40 +7,40 @@ import java.util.Calendar;
 
 public class AppController extends Thread {
 
-    private Socket                      ConnSocket;
-    private RandomAccessFile            DatFile;
-    private int                         RequestedPieceId;
-    private int                         PeerId;
-    private int                         ClientPeerId;
-    private boolean                     MakesConnection;
-    private BroadcastStruct             HaveBroadcastList;
-    private BroadcastStructData         LastBroadcastData;
-    private final static String         HandshakeHeader = "P2PFILESHARINGPROJ";
+    private Socket ConnSocket;
+    private RandomAccessFile DatFile;
+    private int RequestedPieceId;
+    private int PeerId;
+    private int ClientPeerId;
+    private boolean MakesConnection;
+    private BroadcastStruct HaveBroadcastList;
+    private BroadcastStructData LastBroadcastData;
+    private final static String HandshakeHeader = "P2PFILESHARINGPROJ";
 
-    private peerProcess.PeerConfigurationData   ClientData;
-    private peerProcess.PeerConfigurationData   SelfData;
+    private peerProcess.PeerConfigurationData ClientData;
+    private peerProcess.PeerConfigurationData SelfData;
 
-    private ObjectOutputStream   SocketOutStream;
-    private ObjectInputStream    SocketInputStream;
+    private ObjectOutputStream SocketOutStream;
+    private ObjectInputStream SocketInputStream;
 
     class ResponseOutput {
-        eSocketReturns      Error;
-        Message             Response;
+        eSocketReturns Error;
+        Message Response;
     }
 
-    AppController (Socket pSocket, int pPeerId, boolean pMakesConnection, BroadcastStruct pHaveBroadcastList) {
-        ConnSocket       = pSocket;
-        PeerId           = pPeerId;
-        ClientData       = null;
-        SelfData         = peerProcess.PeerMap.get(pPeerId);
-        MakesConnection  = pMakesConnection;
-        HaveBroadcastList= pHaveBroadcastList;
-        LastBroadcastData= pHaveBroadcastList.GetLast();
+    AppController(Socket pSocket, int pPeerId, boolean pMakesConnection, BroadcastStruct pHaveBroadcastList) {
+        ConnSocket = pSocket;
+        PeerId = pPeerId;
+        ClientData = null;
+        SelfData = peerProcess.PeerMap.get(pPeerId);
+        MakesConnection = pMakesConnection;
+        HaveBroadcastList = pHaveBroadcastList;
+        LastBroadcastData = pHaveBroadcastList.GetLast();
         RequestedPieceId = -1;
 
         try {
             DatFile = new RandomAccessFile(new java.io.File(peerProcess.FileName), "rw");
-        } catch (FileNotFoundException ex){
+        } catch (FileNotFoundException ex) {
             System.out.println("Failed to open data file for IO.");
             DatFile = null;
         }
@@ -48,13 +48,14 @@ public class AppController extends Thread {
 
     /**
      * <p>
-     *     The thread execution function initiates the entire the entire communication with a client
+     * The thread execution function initiates the entire the entire communication
+     * with a client
      * </p>
      */
-    public void run () {
+    public void run() {
 
         // debug helper
-        if (!ConnSocket.isConnected()){
+        if (!ConnSocket.isConnected()) {
             System.out.println("A connection is not successful.");
             return;
         }
@@ -65,75 +66,77 @@ public class AppController extends Thread {
 
             ConnSocket.setKeepAlive(true);
 
-            SocketOutStream   = new ObjectOutputStream (ConnSocket.getOutputStream());
-            SocketInputStream = new ObjectInputStream  (ConnSocket.getInputStream());
+            SocketOutStream = new ObjectOutputStream(ConnSocket.getOutputStream());
+            SocketInputStream = new ObjectInputStream(ConnSocket.getInputStream());
 
             SocketOutStream.flush();
 
             // perform handshake and abandon the processing in case handshake fails
-            if (PerformHandshake () != eSocketReturns.E_SOCRET_SUCCESS){
-                Logger.GetLogger().Log(Calendar.getInstance().getTime().toString() + ": " + PeerId + " fails performing handshake. THE PEER IS ABANDONED.");
+            if (PerformHandshake() != eSocketReturns.E_SOCRET_SUCCESS) {
+                Logger.GetLogger().Log(Calendar.getInstance().getTime().toString() + ": " + PeerId
+                        + " fails performing handshake. THE PEER IS ABANDONED.");
                 return;
             }
 
             // handshake is always followed by BitSetExchange
-            if (PerformBitSetExchange() != eSocketReturns.E_SOCRET_SUCCESS){
-                Logger.GetLogger().Log(Calendar.getInstance().getTime().toString() + ": " + PeerId + " fails performing BitSet Excahnge with peer: " + ClientPeerId+" . THE PEER IS ABANDONED.");
+            if (PerformBitSetExchange() != eSocketReturns.E_SOCRET_SUCCESS) {
+                Logger.GetLogger().Log(Calendar.getInstance().getTime().toString() + ": " + PeerId
+                        + " fails performing BitSet Excahnge with peer: " + ClientPeerId + " . THE PEER IS ABANDONED.");
                 return;
             }
 
             // handshake is always followed by BitSetExchange
-            if (PerformFileOp () != eSocketReturns.E_SOCRET_SUCCESS){
-                Logger.GetLogger().Log(Calendar.getInstance().getTime().toString() + ": " + PeerId + " fails performing file exchange with peer: " + ClientPeerId+" . THE PEER IS ABANDONED.");
+            if (PerformFileOp() != eSocketReturns.E_SOCRET_SUCCESS) {
+                Logger.GetLogger().Log(Calendar.getInstance().getTime().toString() + ": " + PeerId
+                        + " fails performing file exchange with peer: " + ClientPeerId + " . THE PEER IS ABANDONED.");
                 return;
             }
 
             Thread.sleep(10000);
 
             ConnSocket.close();
-        }
-        catch (IOException | InterruptedException ex){
-            System.out.println ("Unable to set keep alive on socket.");
-            System.out.println (ex.getMessage());
+        } catch (IOException | InterruptedException ex) {
+            System.out.println("Unable to set keep alive on socket.");
+            System.out.println(ex.getMessage());
         }
     }
 
-    private eSocketReturns PerformFileOp () {
+    private eSocketReturns PerformFileOp() {
         eSocketReturns ret;
 
         // perform send receive activity
         do {
 
-            ret = BroadcastActivity ();
+            ret = BroadcastActivity();
 
             if (ret == eSocketReturns.E_SOCRET_SUCCESS)
-                ret = SendActivity ();
+                ret = SendActivity();
 
             if (ret == eSocketReturns.E_SOCRET_SUCCESS)
-                ret = ReceiveAndActActivity ();
+                ret = ReceiveAndActActivity();
 
             if (ret != eSocketReturns.E_SOCRET_SUCCESS)
-                return  ret;
+                return ret;
 
         } while (true);
 
-        //return eSocketReturns.E_SOCRET_SUCCESS;
+        // return eSocketReturns.E_SOCRET_SUCCESS;
     }
 
     /**
      * <p>
-     *     Generic implementation for all the types of broadcast activity
+     * Generic implementation for all the types of broadcast activity
      * </p>
      *
      * @param pSrc Object containing broadcast info
      * @return The status of the operation.
      */
-    private eSocketReturns SendBroadcastMsg (BroadcastStructData pSrc){
+    private eSocketReturns SendBroadcastMsg(BroadcastStructData pSrc) {
 
-        if (pSrc.OperationType == eOperationType.OPERATION_HAVE.GetVal()){
+        if (pSrc.OperationType == eOperationType.OPERATION_HAVE.GetVal()) {
 
             HaveMessage msg = new HaveMessage();
-            msg.PieceId = (Integer)pSrc.Data;
+            msg.PieceId = (Integer) pSrc.Data;
 
             return SendObj(msg, "IOException occurred while sending Have message.");
         }
@@ -143,18 +146,18 @@ public class AppController extends Thread {
 
     /**
      * <p>
-     *     The procedure is responsible for broadcasting the have data to the client
+     * The procedure is responsible for broadcasting the have data to the client
      * </p>
      *
      * @return Status of the operations
      */
-    private eSocketReturns BroadcastHaveData (){
+    private eSocketReturns BroadcastHaveData() {
 
         eSocketReturns ret = eSocketReturns.E_SOCRET_SUCCESS;
 
-        while (LastBroadcastData.Next != null){
+        while (LastBroadcastData.Next != null) {
 
-            ret = SendBroadcastMsg (LastBroadcastData.Next);
+            ret = SendBroadcastMsg(LastBroadcastData.Next);
 
             if (ret != eSocketReturns.E_SOCRET_SUCCESS)
                 return ret;
@@ -167,73 +170,77 @@ public class AppController extends Thread {
 
     /**
      * <p>
-     *     The procedure to trigger all the broadcast activities
+     * The procedure to trigger all the broadcast activities
      * </p>
+     * 
      * @return the status of the operation
      */
-    private eSocketReturns BroadcastActivity (){
-        return BroadcastHaveData ();
+    private eSocketReturns BroadcastActivity() {
+        return BroadcastHaveData();
     }
 
     /**
      * <p>
-     *     The procedure finds the most significant bit that is not set in the input. The returned value is the position of the bit starting from the MSB as 0.
+     * The procedure finds the most significant bit that is not set in the input.
+     * The returned value is the position of the bit starting from the MSB as 0.
      * </p>
      *
-     * @implNote The function assumes that there is at least a bit taht is not set in the given integer value
+     * @implNote The function assumes that there is at least a bit taht is not set
+     *           in the given integer value
      *
-     * @param pValue    The input integer value for calculation
+     * @param pValue The input integer value for calculation
      * @return The position
      */
-    private byte GetBitSetPos (int pValue){
+    private byte GetBitSetPos(int pValue) {
 
-        int     val = ~pValue;
-        byte    ans = 0;
+        int val = ~pValue;
+        byte ans = 0;
 
-        while (val != 0){
+        while (val != 0) {
             val = val >>> 1;
             ans++;
         }
 
-        return (byte)(peerProcess.BitPerBufVal - ans);
+        return (byte) (peerProcess.BitPerBufVal - ans);
     }
 
     /**
      * <p>
-     *     The procedure is responsible for transmitting the object to the client and handle exceptions while the operation is attempted
+     * The procedure is responsible for transmitting the object to the client and
+     * handle exceptions while the operation is attempted
      * </p>
      *
-     * @param pObj      The object to be sent to the client
-     * @param pFailureMsg   The message to be printed on console in case of failure
-     * @return  The end state of the operations.
+     * @param pObj        The object to be sent to the client
+     * @param pFailureMsg The message to be printed on console in case of failure
+     * @return The end state of the operations.
      */
-    private eSocketReturns SendObj (Object pObj, String pFailureMsg){
+    private eSocketReturns SendObj(Object pObj, String pFailureMsg) {
 
-        byte    extra = 1;
+        byte extra = 1;
         try {
             SocketOutStream.writeByte(extra);
             SocketOutStream.writeObject(pObj);
             SocketOutStream.flush();
-        }
-        catch (IOException ex){
-            System.out.println (pFailureMsg);
-            System.out.println ("*******************EXCEPTION*******************");
-            System.out.println (ex.getMessage());
-            return  eSocketReturns.E_SOCRET_IO_EXCEPTION;
+        } catch (IOException ex) {
+            System.out.println(pFailureMsg);
+            System.out.println("*******************EXCEPTION*******************");
+            System.out.println(ex.getMessage());
+            return eSocketReturns.E_SOCRET_IO_EXCEPTION;
         }
 
-        return  eSocketReturns.E_SOCRET_SUCCESS;
+        return eSocketReturns.E_SOCRET_SUCCESS;
     }
 
     /**
      * <p>
-     *     The procedure for receiving the object from Socket Input Stream and handling the exceptions
+     * The procedure for receiving the object from Socket Input Stream and handling
+     * the exceptions
      * </p>
      *
-     * @param pFailureMsg   The message to be printed on the console
+     * @param pFailureMsg The message to be printed on the console
      * @return A object containing error code and received object in case of success
      */
-    private ResponseOutput ReceiveObj (String pFailureMsg){
+    private ResponseOutput ReceiveObj(String pFailureMsg) {
 
         ResponseOutput out = new ResponseOutput();
 
@@ -246,11 +253,10 @@ public class AppController extends Thread {
                 out.Error = eSocketReturns.E_SOCRET_NOTHING_TO_READ;
                 out.Response = null;
             }
-        }
-        catch (ClassNotFoundException | IOException ex){
-            System.out.println ("*******************EXCEPTION*******************");
-            System.out.println (pFailureMsg);
-            System.out.println (ex.getMessage());
+        } catch (ClassNotFoundException | IOException ex) {
+            System.out.println("*******************EXCEPTION*******************");
+            System.out.println(pFailureMsg);
+            System.out.println(ex.getMessage());
             out.Response = null;
             out.Error = eSocketReturns.E_SOCRET_IO_EXCEPTION;
         }
@@ -260,14 +266,15 @@ public class AppController extends Thread {
 
     /**
      * <p>
-     *      The function is responsible for preparing the request for the given piece ID and sending it over to the client
+     * The function is responsible for preparing the request for the given piece ID
+     * and sending it over to the client
      * </p>
      *
      * @param pPieceId The piece id that is being requested from the client
      *
      * @return The end status of the operation.
      */
-    private eSocketReturns SendPieceRequest (int pPieceId){
+    private eSocketReturns SendPieceRequest(int pPieceId) {
 
         eSocketReturns ret;
 
@@ -275,7 +282,7 @@ public class AppController extends Thread {
 
         msg.PieceId = pPieceId;
 
-        ret = SendObj (msg, "IOException occurred while sending piece Request message.");
+        ret = SendObj(msg, "IOException occurred while sending piece Request message.");
 
         if (ret == eSocketReturns.E_SOCRET_SUCCESS)
             RequestedPieceId = pPieceId;
@@ -285,38 +292,42 @@ public class AppController extends Thread {
 
     /**
      * <p>
-     *     The function is responsible for preparing the message with piece data and sending it over to the client
+     * The function is responsible for preparing the message with piece data and
+     * sending it over to the client
      * </p>
      *
      * @param pPieceId The piece id that is to be sent
      *
      * @return the status of the operation
      */
-    private eSocketReturns SendPieceResponse (int pPieceId){
+    private eSocketReturns SendPieceResponse(int pPieceId) {
 
-        int          bytesRead;
+        int bytesRead;
         PieceMessage msg = new PieceMessage();
-        byte[]       data;
+        byte[] data;
 
         data = new byte[peerProcess.PieceSize];
 
         msg.PieceId = pPieceId;
 
+        if (ClientData.IsChocked.get())
+            return eSocketReturns.E_SOCRET_SUCCESS;
+
         try {
 
-            DatFile.seek(pPieceId*peerProcess.PieceSize);
-            bytesRead  = DatFile.read(data, 0, peerProcess.PieceSize);
+            DatFile.seek(pPieceId * peerProcess.PieceSize);
+            bytesRead = DatFile.read(data, 0, peerProcess.PieceSize);
 
-            if (bytesRead < peerProcess.PieceSize){
+            if (bytesRead < peerProcess.PieceSize) {
 
                 data = new byte[bytesRead];
 
-                DatFile.seek(pPieceId*peerProcess.PieceSize);
-                bytesRead  = DatFile.read(data, 0, bytesRead);
+                DatFile.seek(pPieceId * peerProcess.PieceSize);
+                bytesRead = DatFile.read(data, 0, bytesRead);
             }
-        } catch (IOException ex){
+        } catch (IOException ex) {
             return eSocketReturns.E_SOCRET_IO_EXCEPTION;
-        } catch (Exception ex){
+        } catch (Exception ex) {
             return eSocketReturns.E_SOCRET_IO_EXCEPTION;
         }
         msg.SetPieceData(data);
@@ -326,71 +337,55 @@ public class AppController extends Thread {
 
     /**
      * <p>
-     *     The function is responsible for sending the requested piece to the client.
+     * The function is responsible for sending the requested piece to the client.
      * </p>
      * 
-     * @// TODO: 3/2/2019 Implement choke unchoke and should sent a piece request to only one client
+     * @// TODO: 3/2/2019 Implement choke unchoke and should sent a piece request to
+     * only one client
      * 
      * @param pMsg The string containing the message to be printed on console
      * @return The end status of the operation.
      */
-    private eSocketReturns ProcessPieceRequest (RequestMessage pMsg){
+    private eSocketReturns ProcessPieceRequest(RequestMessage pMsg) {
 
         // the situation is never possible except for code bugs
         if (pMsg.PieceId < 0)
-            return PrintErrorMessageToConsole ("Piece Request With Invalid Content");
+            return PrintErrorMessageToConsole("Piece Request With Invalid Content");
 
-        return SendPieceResponse (pMsg.PieceId);
+        return SendPieceResponse(pMsg.PieceId);
     }
 
     /*
-    static ArrayList a = new ArrayList();
-    private void DebugState(int newDownloadId, boolean pPreAddCheck)
-    {
-        if (a.contains(newDownloadId)){
-            System.out.println("Fuck Off");
-        }
-        if (pPreAddCheck == false)
-            a.add(newDownloadId);
+     * static ArrayList a = new ArrayList(); private void DebugState(int
+     * newDownloadId, boolean pPreAddCheck) { if (a.contains(newDownloadId)){
+     * System.out.println("Fuck Off"); } if (pPreAddCheck == false)
+     * a.add(newDownloadId);
+     * 
+     * if (pPreAddCheck){ int num = newDownloadId; int index =
+     * num/peerProcess.BitPerBufVal; int requested =
+     * SelfData.RequestedFileState.get(index); int downloaded =
+     * SelfData.FileState.get(index);
+     * 
+     * int bitpos = 1 << (peerProcess.BitPerBufVal - num%peerProcess.BitPerBufVal -
+     * 1); if ((requested & bitpos) == 1) { return; }
+     * 
+     * if ((downloaded & bitpos) == 1) { return; } }
+     * 
+     * for (int iter = 0; iter < a.size(); iter++){ int num = (int)a.get(iter); int
+     * index = num/peerProcess.BitPerBufVal; int requested =
+     * SelfData.RequestedFileState.get(index); int downloaded =
+     * SelfData.FileState.get(index);
+     * 
+     * int bitpos = 1 << (peerProcess.BitPerBufVal - num%peerProcess.BitPerBufVal -
+     * 1);
+     * 
+     * if (pPreAddCheck == false) { if ((requested & bitpos) == 0) { return; }
+     * 
+     * if ((downloaded & bitpos) == 0) { return; } } } }
+     */
 
-        if (pPreAddCheck){
-            int num = newDownloadId;
-            int index = num/peerProcess.BitPerBufVal;
-            int requested = SelfData.RequestedFileState.get(index);
-            int downloaded = SelfData.FileState.get(index);
-
-            int bitpos = 1 << (peerProcess.BitPerBufVal - num%peerProcess.BitPerBufVal - 1);
-            if ((requested & bitpos) == 1) {
-                return;
-            }
-
-            if ((downloaded & bitpos) == 1) {
-                return;
-            }
-        }
-
-        for (int iter = 0; iter < a.size(); iter++){
-            int num = (int)a.get(iter);
-            int index = num/peerProcess.BitPerBufVal;
-            int requested = SelfData.RequestedFileState.get(index);
-            int downloaded = SelfData.FileState.get(index);
-
-            int bitpos = 1 << (peerProcess.BitPerBufVal - num%peerProcess.BitPerBufVal - 1);
-
-            if (pPreAddCheck == false) {
-                if ((requested & bitpos) == 0) {
-                    return;
-                }
-
-                if ((downloaded & bitpos) == 0) {
-                    return;
-                }
-            }
-        }
-    }*/
-
-    private boolean IsPeerInteresting (){
-        ArrayList       list;
+    private boolean IsPeerInteresting() {
+        ArrayList list;
 
         list = GetInterestingBitsetList(true);
 
@@ -400,36 +395,37 @@ public class AppController extends Thread {
         return true;
     }
 
-    private eSocketReturns SendInterestedMsg(){
+    private eSocketReturns SendInterestedMsg() {
         Message msg;
         msg = new Message(eOperationType.OPERATION_INTERESTED.GetVal());
 
         return SendObj(msg, "IOException occurred while sending Interested message.");
     }
 
-    private eSocketReturns SendNotInterestedMsg(){
+    private eSocketReturns SendNotInterestedMsg() {
         Message msg;
         msg = new Message(eOperationType.OPERATION_NOT_INTERESTED.GetVal());
 
         return SendObj(msg, "IOException occurred while sending Interested message.");
     }
 
-    private eSocketReturns ProcessPeerInterestState (){
+    private eSocketReturns ProcessPeerInterestState() {
         if (IsPeerInteresting())
-            return SendInterestedMsg ();
+            return SendInterestedMsg();
         else
-            return SendNotInterestedMsg ();
+            return SendNotInterestedMsg();
     }
 
     /**
      * <p>
-     *     The function is responsible for handling the Piece/Packet sent by the client in response for the request made from the server
+     * The function is responsible for handling the Piece/Packet sent by the client
+     * in response for the request made from the server
      * </p>
      * 
      * @param pMsg The message as recieved from client
      * @return The end status of the operation.
      */
-    private eSocketReturns ProcessPieceResponse (PieceMessage pMsg){
+    private eSocketReturns ProcessPieceResponse(PieceMessage pMsg) {
 
         int updatedval;
         int originalval;
@@ -440,94 +436,108 @@ public class AppController extends Thread {
         if (pMsg.PieceId != RequestedPieceId) {
             RequestedPieceId = -1;
             // Requested piece id is reset so that the application can continue to work
-            return PrintErrorMessageToConsole("The piece requested was: " + RequestedPieceId + ". The received piece is: " + pMsg.PieceId + ".");
+            return PrintErrorMessageToConsole(
+                    "The piece requested was: " + RequestedPieceId + ". The received piece is: " + pMsg.PieceId + ".");
         }
 
         RequestedPieceId = -1;
 
-        // The process just receive a piece/package this must be informed to all other online peers
+        // The process just receive a piece/package this must be informed to all other
+        // online peers
         HaveBroadcastList.AddForBroadcast(eOperationType.OPERATION_HAVE.GetVal(), pMsg.PieceId);
 
         // logging as per the specification
-        Logger.GetLogger().Log(Calendar.getInstance().getTime().toString() + ": Peer " + PeerId + " has downloaded the piece " + pMsg.PieceId + " from  " + ClientPeerId + ". Now the number of pieces it has is " + ++(SelfData.NumPiecesAvailable));
+        Logger.GetLogger()
+                .Log(Calendar.getInstance().getTime().toString() + ": Peer " + PeerId + " has downloaded the piece "
+                        + pMsg.PieceId + " from  " + ClientPeerId + ". Now the number of pieces it has is "
+                        + ++(SelfData.NumPiecesAvailable));
 
         try {
             DatFile.seek(pMsg.PieceId * peerProcess.PieceSize);
             DatFile.write(pMsg.GetPieceData());
-        } catch (IOException ex){
+        } catch (IOException ex) {
             return eSocketReturns.E_SOCRET_IO_EXCEPTION;
         }
 
-        // updating the bit value so that the same packet is not requested again from any other client
+        // updating the bit value so that the same packet is not requested again from
+        // any other client
         do {
-            originalval = SelfData.FileState.get (pMsg.PieceId /peerProcess.BitPerBufVal);
-            updatedval  = originalval | (1 << peerProcess.BitPerBufVal - pMsg.PieceId %peerProcess.BitPerBufVal -1);
-        }while (!SelfData.FileState.compareAndSet(pMsg.PieceId /peerProcess.BitPerBufVal, originalval, updatedval));
+            originalval = SelfData.FileState.get(pMsg.PieceId / peerProcess.BitPerBufVal);
+            updatedval = originalval | (1 << peerProcess.BitPerBufVal - pMsg.PieceId % peerProcess.BitPerBufVal - 1);
+        } while (!SelfData.FileState.compareAndSet(pMsg.PieceId / peerProcess.BitPerBufVal, originalval, updatedval));
 
-        //DebugState (pMsg.PieceId, false);
+        // DebugState (pMsg.PieceId, false);
 
-        return  ProcessPeerInterestState();
+        return ProcessPeerInterestState();
     }
 
     /**
      * <p>
-     *     This is just a helping procedure to log the error message on the console
+     * This is just a helping procedure to log the error message on the console
      * </p>
      *
-     * @param pErrorMsg     String containing the message to be printed
-     * @return  Always returns E_SOCRET_FAILED
+     * @param pErrorMsg String containing the message to be printed
+     * @return Always returns E_SOCRET_FAILED
      */
-    private eSocketReturns PrintErrorMessageToConsole (String pErrorMsg){
-        System.out.println ("*******************Error*******************");
-        System.out.println (pErrorMsg);
+    private eSocketReturns PrintErrorMessageToConsole(String pErrorMsg) {
+        System.out.println("*******************Error*******************");
+        System.out.println(pErrorMsg);
         return eSocketReturns.E_SOCRET_FAILED;
     }
 
     /**
      * <p>
-     *     'Have' is a message that a client sends when it has successfully received a piece/packet from any of its peers.
-     *     The function handles all the accounting activity for the have message. The activity includes updating the associated
-     *     bitset value for the piece that corresponds to the client. Update the number of pieces available with the client and
-     *     records/logs the activity as per the specification document.
+     * 'Have' is a message that a client sends when it has successfully received a
+     * piece/packet from any of its peers. The function handles all the accounting
+     * activity for the have message. The activity includes updating the associated
+     * bitset value for the piece that corresponds to the client. Update the number
+     * of pieces available with the client and records/logs the activity as per the
+     * specification document.
      * </p>
      *
      * @param pMsg The message as received from the client
      * @return The end status of the operation.
      */
-    private  eSocketReturns ProcessHaveRequest (HaveMessage pMsg){
+    private eSocketReturns ProcessHaveRequest(HaveMessage pMsg) {
 
         // the below scenario is not possible
         if (pMsg.PieceId < 0)
             return PrintErrorMessageToConsole("Piece Request With Invalid Content");
 
-        // BUG update the client piece bit for the given piece ID the operation is safe as no other thread will touch this data apart from this
-        ClientData.FileState.set (pMsg.PieceId/peerProcess.BitPerBufVal, ClientData.FileState.get(pMsg.PieceId/peerProcess.BitPerBufVal) | (1 << (peerProcess.BitPerBufVal - (pMsg.PieceId%peerProcess.BitPerBufVal) - 1)));
+        // BUG update the client piece bit for the given piece ID the operation is safe
+        // as no other thread will touch this data apart from this
+        ClientData.FileState.set(pMsg.PieceId / peerProcess.BitPerBufVal,
+                ClientData.FileState.get(pMsg.PieceId / peerProcess.BitPerBufVal)
+                        | (1 << (peerProcess.BitPerBufVal - (pMsg.PieceId % peerProcess.BitPerBufVal) - 1)));
 
         // BUG the number of pieces with the client has increased by 1
         ClientData.NumPiecesAvailable++;
 
         // log the message as per specification
-        Logger.GetLogger().Log(Calendar.getInstance().getTime().toString() + ": Peer " + PeerId + " received the 'have' message from " + ClientPeerId + " for the piece " + pMsg.PieceId);
+        Logger.GetLogger().Log(Calendar.getInstance().getTime().toString() + ": Peer " + PeerId
+                + " received the 'have' message from " + ClientPeerId + " for the piece " + pMsg.PieceId);
 
-        return  ProcessPeerInterestState();
+        return ProcessPeerInterestState();
     }
 
     /**
      * <p>
-     *     The function is responsible for triggering object fetch from the client and then calling the suitable handler
-     *     for the same.
+     * The function is responsible for triggering object fetch from the client and
+     * then calling the suitable handler for the same.
      * </p>
      *
-     * @return E_SOCRET_SUCCESS if successful else a relevant error code. The function will return fail if an unsupported/invalid operation request is received
+     * @return E_SOCRET_SUCCESS if successful else a relevant error code. The
+     *         function will return fail if an unsupported/invalid operation request
+     *         is received
      */
-    private eSocketReturns ReceivePacket(){
+    private eSocketReturns ReceivePacket() {
 
         ResponseOutput ret;
 
         ret = ReceiveObj("IOException occurred while de-serializing message.");
 
         if (ret.Error == eSocketReturns.E_SOCRET_NOTHING_TO_READ)
-            return  eSocketReturns.E_SOCRET_SUCCESS;
+            return eSocketReturns.E_SOCRET_SUCCESS;
 
         // error receiving the object
         if (ret.Error != eSocketReturns.E_SOCRET_SUCCESS)
@@ -538,10 +548,10 @@ public class AppController extends Thread {
             return ProcessPieceResponse((PieceMessage) ret.Response);
 
         if (ret.Response.OperationType == eOperationType.OPERATION_REQUEST.GetVal())
-            return ProcessPieceRequest ((RequestMessage) ret.Response);
+            return ProcessPieceRequest((RequestMessage) ret.Response);
 
         if (ret.Response.OperationType == eOperationType.OPERATION_HAVE.GetVal())
-            return ProcessHaveRequest ((HaveMessage) ret.Response);
+            return ProcessHaveRequest((HaveMessage) ret.Response);
 
         if (ret.Response.OperationType == eOperationType.OPERATION_NOT_INTERESTED.GetVal())
             return ProcessInterestingRequest(ret.Response);
@@ -549,59 +559,89 @@ public class AppController extends Thread {
         if (ret.Response.OperationType == eOperationType.OPERATION_INTERESTED.GetVal())
             return ProcessNotInterestingRequest((Message) ret.Response);
 
+        if (ret.Response.OperationType == eOperationType.OPERATION_CHOKE.GetVal()) {
+            return ProcessChoke();
+        }
+
+        if (ret.Response.OperationType == eOperationType.OPERATION_CHOKE.GetVal()) {
+            ClientData.IsChokedByPeer = false;
+            return eSocketReturns.E_SOCRET_SUCCESS;
+        }
+
         return eSocketReturns.E_SOCRET_FAILED;
     }
 
-    eSocketReturns ProcessNotInterestingRequest(Message pMsg){
+    eSocketReturns ProcessNotInterestingRequest(Message pMsg) {
 
         // log the message as per specification
-        Logger.GetLogger().Log(Calendar.getInstance().getTime().toString() + ": Peer " + PeerId + " received the 'interested’ message from " + ClientPeerId + ".");
+        Logger.GetLogger().Log(Calendar.getInstance().getTime().toString() + ": Peer " + PeerId
+                + " received the 'interested’ message from " + ClientPeerId + ".");
 
         ClientData.IsInterested.set(false);
 
         return eSocketReturns.E_SOCRET_SUCCESS;
     }
 
-    eSocketReturns ProcessInterestingRequest(Message pMsg){
+    eSocketReturns ProcessInterestingRequest(Message pMsg) {
 
         // log the message as per specification
-        Logger.GetLogger().Log(Calendar.getInstance().getTime().toString() + ": Peer " + PeerId + " received the 'not interested’ message from " + ClientPeerId + ".");
+        Logger.GetLogger().Log(Calendar.getInstance().getTime().toString() + ": Peer " + PeerId
+                + " received the 'not interested’ message from " + ClientPeerId + ".");
 
         ClientData.IsInterested.set(true);
 
         return eSocketReturns.E_SOCRET_SUCCESS;
     }
 
-    class RanPosSelectionNode {
-        int     Position;
-        int     Value;
+    eSocketReturns ProcessChoke() {
+        ClientData.IsChokedByPeer = true;
+
+        if (RequestedPieceId >= 0) {
+            int index = (int) (RequestedPieceId / peerProcess.BitPerBufVal);
+            int pos = RequestedPieceId % peerProcess.BitPerBufVal;
+            int updateBit = 1 << (peerProcess.BitPerBufVal - 1 - pos);
+
+            int originalVal, newVal;
+            do {
+                originalVal = SelfData.RequestedFileState.get(index);
+                newVal = originalVal ^ updateBit;
+            } while (!SelfData.RequestedFileState.compareAndSet(index, originalVal, newVal));
+
+            RequestedPieceId = -1;
+        }
+
+        return eSocketReturns.E_SOCRET_SUCCESS;
     }
 
-    private int GetRandomSetBitPos (int pValue, int pIndex){
+    class RanPosSelectionNode {
+        int Position;
+        int Value;
+    }
+
+    private int GetRandomSetBitPos(int pValue, int pIndex) {
 
         ArrayList posOption = new ArrayList();
-        int       randomSelection = 1<<31;
+        int randomSelection = 1 << 31;
 
-        for (int iter = 0; iter < 32; iter++){
-            if ((pValue&randomSelection) != 0){
-                posOption.add (iter);
-                //DebugState((pIndex*peerProcess.BitPerBufVal)+iter, true);
+        for (int iter = 0; iter < 32; iter++) {
+            if ((pValue & randomSelection) != 0) {
+                posOption.add(iter);
+                // DebugState((pIndex*peerProcess.BitPerBufVal)+iter, true);
             }
             randomSelection = randomSelection >>> 1;
         }
 
-        randomSelection = (int)(Math.random() * posOption.size());
+        randomSelection = (int) (Math.random() * posOption.size());
 
-        return (int)posOption.get(randomSelection);
+        return (int) posOption.get(randomSelection);
     }
 
-    private boolean ReservePieceForRequest (int pIndex, int pReserveBit)
-    {
+    private boolean ReservePieceForRequest(int pIndex, int pReserveBit) {
         int originalRequestBitSet;
         int newRequestBitSet;
 
         do {
-            originalRequestBitSet = SelfData.RequestedFileState.get (pIndex);
+            originalRequestBitSet = SelfData.RequestedFileState.get(pIndex);
 
             // case the request was made from some other client before us
             if ((originalRequestBitSet & pReserveBit) > 0)
@@ -614,28 +654,28 @@ public class AppController extends Thread {
         return true;
     }
 
-    private ArrayList GetInterestingBitsetList (boolean pGetFirstInterestOnly){
+    private ArrayList GetInterestingBitsetList(boolean pGetFirstInterestOnly) {
 
-        ArrayList   posOption = new ArrayList();
-        int         clientBits;
-        int         selfMissingBits;
-        int         unrequestedBits;
-        int         candidateBits;
+        ArrayList posOption = new ArrayList();
+        int clientBits;
+        int selfMissingBits;
+        int unrequestedBits;
+        int candidateBits;
 
-        for (int iter = 0; iter < SelfData.FileState.length(); iter++)
-        {
-            clientBits      = ClientData.FileState.get(iter);
+        for (int iter = 0; iter < SelfData.FileState.length(); iter++) {
+            clientBits = ClientData.FileState.get(iter);
             selfMissingBits = ~SelfData.FileState.get(iter);
             unrequestedBits = ~SelfData.RequestedFileState.get(iter);
 
-            // get all non requested bits that are not with currently available but can be downloaded from client
+            // get all non requested bits that are not with currently available but can be
+            // downloaded from client
             candidateBits = (clientBits & selfMissingBits) & unrequestedBits;
 
-            if (candidateBits != 0){
+            if (candidateBits != 0) {
                 // we have potential data that can be downloaded
                 RanPosSelectionNode node = new RanPosSelectionNode();
                 node.Position = iter;
-                node.Value    = candidateBits;
+                node.Value = candidateBits;
                 posOption.add(node);
 
                 // the client is interested in only the first interest point
@@ -644,15 +684,15 @@ public class AppController extends Thread {
             }
         }
 
-        return  posOption;
+        return posOption;
     }
 
-    private int GetRandomPieceIdToRequest (){
+    private int GetRandomPieceIdToRequest() {
 
-        ArrayList   posOption;
-        int         randomSelection;
-        int         bitPosition;
-        int         reserveBit;
+        ArrayList posOption;
+        int randomSelection;
+        int bitPosition;
+        int reserveBit;
 
         posOption = GetInterestingBitsetList(false);
 
@@ -665,16 +705,20 @@ public class AppController extends Thread {
             randomSelection = (int) (Math.random() * posOption.size());
 
             // now get a random position from the bit set
-            bitPosition = GetRandomSetBitPos(((RanPosSelectionNode) posOption.get(randomSelection)).Value, ((RanPosSelectionNode) posOption.get(randomSelection)).Position);
+            bitPosition = GetRandomSetBitPos(((RanPosSelectionNode) posOption.get(randomSelection)).Value,
+                    ((RanPosSelectionNode) posOption.get(randomSelection)).Position);
 
             reserveBit = (1 << (peerProcess.BitPerBufVal - 1 - bitPosition));
 
             // try to reserve the piece for request from client
             if (ReservePieceForRequest(((RanPosSelectionNode) posOption.get(randomSelection)).Position, reserveBit))
-                return ((RanPosSelectionNode) posOption.get(randomSelection)).Position * peerProcess.BitPerBufVal + bitPosition;
+                return ((RanPosSelectionNode) posOption.get(randomSelection)).Position * peerProcess.BitPerBufVal
+                        + bitPosition;
             else {
                 // someone else requested what we wanted to request
-                ((RanPosSelectionNode) posOption.get(randomSelection)).Value = ((RanPosSelectionNode) posOption.get(randomSelection)).Value & (~reserveBit);
+                ((RanPosSelectionNode) posOption
+                        .get(randomSelection)).Value = ((RanPosSelectionNode) posOption.get(randomSelection)).Value
+                                & (~reserveBit);
 
                 // there is no more interesting bit at this position
                 if (((RanPosSelectionNode) posOption.get(randomSelection)).Value == 0)
@@ -684,44 +728,64 @@ public class AppController extends Thread {
         } while (true);
     }
 
+    private eSocketReturns sendChokeInfo() {
+        Message msg;
+
+        if (ClientData.IsChocked.get())
+            msg = new Message(eOperationType.OPERATION_CHOKE.GetVal());
+        else
+            msg = new Message(eOperationType.OPERATION_UNCHOKE.GetVal());
+
+        return SendObj(msg, "Choke/Unchoke message not sent");
+    }
+
     /**
      * @return The end status of the operation.
      */
-    private eSocketReturns SendActivity () {
+    private eSocketReturns SendActivity() {
 
         int packet_num;
 
-        // a new request is not sent till the state of last requested packet is determined. This is treated as a success as waiting for a response is not an error
-        if (RequestedPieceId != -1)
+        // If supposed to inform and request send choke info returns bad value then
+        // return fail
+        if (ClientData.SendChokeInfo.get() && eSocketReturns.E_SOCRET_SUCCESS == sendChokeInfo()) {
+            return eSocketReturns.E_SOCRET_FAILED;
+        }
+
+        // a new request is not sent till the state of last requested packet is
+        // determined. This is treated as a success as waiting for a response is not an
+        // error
+        if (RequestedPieceId <  && ClientData.IsChokedByPeer)
             return eSocketReturns.E_SOCRET_SUCCESS;
 
-        packet_num = GetRandomPieceIdToRequest ();
+        packet_num = GetRandomPieceIdToRequest();
 
         // nothing that can be requested for now
         if (packet_num == -1)
             return eSocketReturns.E_SOCRET_SUCCESS;
 
-        return SendPieceRequest (packet_num);
+        return SendPieceRequest(packet_num);
     }
 
     /**
-     * @// TODO: 3/2/2019 Improvise this
-     * @return The end status of the operation.
+     * @// TODO: 3/2/2019 Improvise this @return The end status of the operation.
      */
-    private eSocketReturns ReceiveAndActActivity () {
+    private eSocketReturns ReceiveAndActActivity() {
         return ReceivePacket();
     }
 
     /**
      *
-     * @// TODO: 3/2/2019 The functionaliy for counting the number of blocks the client already has is yet to be implemented. The extra bit that may be there in the header should also be accounted.
+     * @// TODO: 3/2/2019 The functionaliy for counting the number of blocks the
+     * client already has is yet to be implemented. The extra bit that may be there
+     * in the header should also be accounted.
      *
      * @return returns the status for the requested operation
      */
-    private eSocketReturns ProcessBitSetResponse (){
+    private eSocketReturns ProcessBitSetResponse() {
 
         BitFieldMessage bitFieldMsg;
-        ResponseOutput  out;
+        ResponseOutput out;
 
         do {
             out = ReceiveObj("IOException occurred while de-serializing BitField message.");
@@ -732,84 +796,93 @@ public class AppController extends Thread {
 
         // the bit request can only get bit response and nothing else
         if (out.Response.OperationType != eOperationType.OPERATION_BITFIELD.GetVal())
-            return PrintErrorMessageToConsole("Error in BitField message exchange received Operation Type: " + out.Response.OperationType +" when expecting :" + eOperationType.OPERATION_BITFIELD);
+            return PrintErrorMessageToConsole("Error in BitField message exchange received Operation Type: "
+                    + out.Response.OperationType + " when expecting :" + eOperationType.OPERATION_BITFIELD);
 
-        // not thaw we have verified the message to be of right type we can cast it into our actual message structure
-        bitFieldMsg = (BitFieldMessage)out.Response;
+        // not thaw we have verified the message to be of right type we can cast it into
+        // our actual message structure
+        bitFieldMsg = (BitFieldMessage) out.Response;
 
         ClientData = peerProcess.PeerMap.get(ClientPeerId);
 
-        // the bit field file sate length should be same as the file iis same for all if they are not same we have some error in the system
+        // the bit field file sate length should be same as the file iis same for all if
+        // they are not same we have some error in the system
         if (bitFieldMsg.BitField.length() != ClientData.FileState.length())
-            return PrintErrorMessageToConsole("Error in BitField message exchange received Operation Type: " + out.Response.OperationType +" when expecting :" + eOperationType.OPERATION_BITFIELD);
+            return PrintErrorMessageToConsole("Error in BitField message exchange received Operation Type: "
+                    + out.Response.OperationType + " when expecting :" + eOperationType.OPERATION_BITFIELD);
 
         // overwrite the current client file state info with the latest available info
         ClientData.FileState = bitFieldMsg.BitField;
 
-        for (int iter = 0; iter < ClientData.FileState.length(); iter++){
-            //count the number of packets the client already has
+        for (int iter = 0; iter < ClientData.FileState.length(); iter++) {
+            // count the number of packets the client already has
             ClientData.NumPiecesAvailable = 0;
         }
 
-        return  ProcessPeerInterestState ();
+        return ProcessPeerInterestState();
     }
 
     /**
      * <p>
-     *     The procedure is responsible for ensuring that the process communicates its bit field with its client and receives and updates the client bit field values.
+     * The procedure is responsible for ensuring that the process communicates its
+     * bit field with its client and receives and updates the client bit field
+     * values.
      * </p>
      *
      * @return Status of the operation
      */
-    private eSocketReturns PerformBitSetExchange (){
+    private eSocketReturns PerformBitSetExchange() {
 
         eSocketReturns ret;
 
-        BitFieldMessage    msg = new BitFieldMessage();
+        BitFieldMessage msg = new BitFieldMessage();
 
-        //recording the current end broadcast element as the current client needs data only beyond this
+        // recording the current end broadcast element as the current client needs data
+        // only beyond this
         LastBroadcastData = HaveBroadcastList.GetLast();
 
         msg.SetBitFieldInfo(peerProcess.PeerMap.get(PeerId).FileState);
 
         ret = SendObj(msg, "IOException occurred while sending BitField message.");
 
-        // if the bitField were sent successfully wait and process the clients response BitFields
+        // if the bitField were sent successfully wait and process the clients response
+        // BitFields
         if (ret == eSocketReturns.E_SOCRET_SUCCESS)
-            return  ProcessBitSetResponse();
+            return ProcessBitSetResponse();
 
-        return  ret;
+        return ret;
     }
 
     /**
      * <p>
-     *     The procedures waits for the client handshake message validates it and returns the status as response
+     * The procedures waits for the client handshake message validates it and
+     * returns the status as response
      * </p>
      *
      * @return the status of operation
      */
-    private eSocketReturns WaitAndProcessHandshakeResponse () {
+    private eSocketReturns WaitAndProcessHandshakeResponse() {
 
-        HandshakeMsg    msg;
+        HandshakeMsg msg;
 
         try {
             SocketInputStream.readByte();
             msg = (HandshakeMsg) SocketInputStream.readObject();
-        }
-        catch (IOException | ClassNotFoundException ex){
-            System.out.println ("*******************EXCEPTION*******************");
-            System.out.println ("IOException occurred while de-serializing handshake message.");
-            System.out.println (ex.getMessage());
-            return  eSocketReturns.E_SOCRET_IO_EXCEPTION;
+        } catch (IOException | ClassNotFoundException ex) {
+            System.out.println("*******************EXCEPTION*******************");
+            System.out.println("IOException occurred while de-serializing handshake message.");
+            System.out.println(ex.getMessage());
+            return eSocketReturns.E_SOCRET_IO_EXCEPTION;
         }
 
-        if (!msg.GetHdrBuf().equals(HandshakeHeader)){
+        if (!msg.GetHdrBuf().equals(HandshakeHeader)) {
             Logger.GetLogger().Log("Handshake failed. Received invalid handshake header.");
             return eSocketReturns.E_SOCRET_FAILED;
         }
 
-        // if the peer is invalid as per known peer from configuration or the peer has the same ID as the current application
-        if (!peerProcess.PeerMap.containsKey(msg.GetPeerId()) || msg.GetPeerId() == PeerId){
+        // if the peer is invalid as per known peer from configuration or the peer has
+        // the same ID as the current application
+        if (!peerProcess.PeerMap.containsKey(msg.GetPeerId()) || msg.GetPeerId() == PeerId) {
             Logger.GetLogger().Log("Handshake failed. Received invalid PeerId.");
             return eSocketReturns.E_SOCRET_FAILED;
         }
@@ -818,29 +891,34 @@ public class AppController extends Thread {
 
         // logging as per log requirement specification
         if (MakesConnection)
-            Logger.GetLogger().Log(Calendar.getInstance().getTime().toString() + ": " + PeerId + " makes a connection to " + ClientPeerId);
+            Logger.GetLogger().Log(Calendar.getInstance().getTime().toString() + ": " + PeerId
+                    + " makes a connection to " + ClientPeerId);
         else
-            Logger.GetLogger().Log(Calendar.getInstance().getTime().toString() + ": " + PeerId + " is connected from " + ClientPeerId);
+            Logger.GetLogger().Log(
+                    Calendar.getInstance().getTime().toString() + ": " + PeerId + " is connected from " + ClientPeerId);
 
         return eSocketReturns.E_SOCRET_SUCCESS;
     }
 
     /**
      * <p>
-     *     The procedure is responsible for initiating and completing the handshake process. This involves sending handshake message and processing the client handshake message as well.
+     * The procedure is responsible for initiating and completing the handshake
+     * process. This involves sending handshake message and processing the client
+     * handshake message as well.
      * </p>
      *
      * @return The end status for the operation
      */
-    private eSocketReturns PerformHandshake (){
-        eSocketReturns  ret;
-        HandshakeMsg    msg;
+    private eSocketReturns PerformHandshake() {
+        eSocketReturns ret;
+        HandshakeMsg msg;
 
         msg = new HandshakeMsg(HandshakeHeader, PeerId);
 
         ret = SendObj(msg, "IOException occurred while serializing handshake message.");
 
-        // if teh handshake data was sent successfully from the process wait and validate the client handshake response
+        // if teh handshake data was sent successfully from the process wait and
+        // validate the client handshake response
         if (ret == eSocketReturns.E_SOCRET_SUCCESS)
             return WaitAndProcessHandshakeResponse();
 
