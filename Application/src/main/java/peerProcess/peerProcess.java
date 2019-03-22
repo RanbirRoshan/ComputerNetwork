@@ -3,6 +3,8 @@
  */
 package peerProcess;
 
+
+
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.RandomAccessFile;
@@ -15,24 +17,30 @@ import java.text.SimpleDateFormat;
 import java.util.*;
 import java.lang.Thread;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicIntegerArray;
 
 public class peerProcess {
 
-    private final String    ConfigFileName  = "Common.cfg";
-    private final String    PeerInfoFile    = "PeerInfo.cfg";
+    private static final boolean InDebug = true;
 
-    private int             PreferredNeighbourCount;
-    private int             UnchockingInterval;
-    private int             OptimisticUnchokingInterval;
-    private String          FileName;
-    private int             FileSize;
-    static int              PieceSize;
-    private AtomicBoolean   TaskComplete;
-    static RandomAccessFile DatFile;
-    private int             MyPeerId;
-    static final int        BitPerBufVal = Integer.SIZE;
-    private BroadcastStruct HaveBroadCastList;
+    private final String        ConfigFileName  = "Common.cfg";
+    private final String        PeerInfoFile    = "PeerInfo.cfg";
+
+    private int                 PreferredNeighbourCount;
+    private int                 UnchockingInterval;
+    private int                 OptimisticUnchokingInterval;
+    static String               FileName;
+    private RandomAccessFile    DatFile;
+    private int                 FileSize;
+    static int                  PieceSize;
+    private AtomicBoolean       TaskComplete;
+    private int                 MyPeerId;
+    static final int            BitPerBufVal = Integer.SIZE;
+    private BroadcastStruct     HaveBroadCastList;
+    private long                LastChokeUpdateTime;
+    private long                LastOptimisticUnchokingIntervalUpdateTime;
+    private int                 OptUnchokedPeerId;
 
     static LinkedHashMap <Integer, PeerConfigurationData> PeerMap;
 
@@ -43,8 +51,12 @@ public class peerProcess {
         int                 NumPiecesAvailable;
         boolean             HasFile;
         boolean             HasFullFile;
-        AtomicIntegerArray  FileState = null;
-        AtomicIntegerArray  RequestedFileState = null;
+        AtomicIntegerArray  FileState       = null;
+        AtomicBoolean       IsChocked       = new AtomicBoolean();
+        AtomicBoolean       SendChokeInfo   = new AtomicBoolean();
+        AtomicBoolean       IsInterested    = new AtomicBoolean(false);
+        AtomicIntegerArray  RequestedFileState  = null;
+        AtomicInteger       ReceivedPiecesCount = new AtomicInteger(0);
     }
 
     private peerProcess (int pPeerId) {
@@ -54,12 +66,16 @@ public class peerProcess {
         MyPeerId    = pPeerId;
         FileName    = null;
 
-        TaskComplete    = new AtomicBoolean(false);
+        TaskComplete        = new AtomicBoolean(false);
         HaveBroadCastList   = new BroadcastStruct();
+        OptUnchokedPeerId   = -1;
 
         // adding a dummy list for everyone to have an initial list to start with if we dont have it we will land into
         // trouble as the threads that start at same time with no initial input will not know the first broadcast message
         HaveBroadCastList.AddForBroadcast((byte)-1, null);
+
+        LastChokeUpdateTime = 0;
+        LastOptimisticUnchokingIntervalUpdateTime = 0;
 
         OptimisticUnchokingInterval = 0;
         UnchockingInterval          = 0;
@@ -106,7 +122,6 @@ public class peerProcess {
             return false;
         }
 
-
         try {
             DatFile = new RandomAccessFile(new java.io.File(FileName), "rw");
         } catch (FileNotFoundException ex){
@@ -142,11 +157,13 @@ public class peerProcess {
                         break;
 
                     case "UnchokingInterval":
-                        UnchockingInterval = fileScanner.nextInt();
+                        UnchockingInterval = fileScanner.nextInt() * 1000;
+                        LastChokeUpdateTime = -1 * UnchockingInterval;
                         break;
 
                     case "OptimisticUnchokingInterval":
-                        OptimisticUnchokingInterval = fileScanner.nextInt();
+                        OptimisticUnchokingInterval = fileScanner.nextInt() * 1000;
+                        LastOptimisticUnchokingIntervalUpdateTime = OptimisticUnchokingInterval * -1;
                         break;
 
                     case "FileName":
@@ -178,11 +195,9 @@ public class peerProcess {
 
     private boolean ReadPeerFile (){
 
-        Scanner     fileScanner;
-
         try {
 
-            fileScanner   = new Scanner(Paths.get (PeerInfoFile));
+            Scanner fileScanner = new Scanner(Paths.get(PeerInfoFile));
 
             while (fileScanner.hasNext()){
 
@@ -190,12 +205,24 @@ public class peerProcess {
                 int     pktCount;
                 int     lastblockval = 0;
 
-                PeerConfigurationData peerData = new PeerConfigurationData();
+                PeerConfigurationData peerData;
+
+                peerData = new PeerConfigurationData();
 
                 peerData.PeerId     = fileScanner.nextInt();
                 peerData.HostName   = fileScanner.next();
                 peerData.PortNumber = fileScanner.nextInt();
                 peerData.HasFile    = (fileScanner.nextInt() == 1);
+
+                // the application assumes the client to be un-interested until explicitly informed
+                if (peerData.PeerId != MyPeerId)
+                    peerData.IsInterested.set(true);
+
+                // by default the client is choked until determined otherwise
+                peerData.IsChocked.set(true);
+
+                // no choke info is sent by default
+                peerData.SendChokeInfo.set(false);
 
                 pktCount    = FileSize/PieceSize + ((FileSize%PieceSize > 0)?1:0);
 
@@ -337,6 +364,154 @@ public class peerProcess {
         return true;
     }
 
+    private void DoUnChokedNodeReselection()
+    {
+        class QueueData{
+            int                             Val;
+            private PeerConfigurationData   Peer;
+        }
+
+        class QueueComparator implements Comparator<QueueData> {
+            public int compare (QueueData pVal1, QueueData pVal2){
+                return pVal1.Val-pVal2.Val;
+            }
+        }
+
+        Comparator<QueueData>      comparator = new QueueComparator();
+
+        PriorityQueue<QueueData>   interestedPeers = new PriorityQueue<>(10, comparator);
+        QueueData                  temp;
+        int                        lastVal = Integer.MAX_VALUE;
+
+        //getting all interested peers
+        for (Map.Entry<Integer, PeerConfigurationData> mapPair : PeerMap.entrySet()) {
+
+            if (mapPair.getValue().IsInterested.get() && mapPair.getValue().PeerId != OptUnchokedPeerId && mapPair.getValue().PeerId != MyPeerId){
+
+                QueueData   data = new QueueData();
+
+                data.Val = mapPair.getValue().ReceivedPiecesCount.get();
+                data.Peer    = mapPair.getValue();
+
+                interestedPeers.add(data);
+
+            } else {
+
+                // we have not interested companions here its better to choke them if they are not already chocked
+                if (!mapPair.getValue().IsChocked.get()){
+
+                    mapPair.getValue().IsChocked.set(true);
+                    // its our responsibility to inform them
+                    mapPair.getValue().SendChokeInfo.set(true);
+                }
+            }
+        }
+
+        if (interestedPeers.size() > 1){
+
+            int count = PreferredNeighbourCount;
+
+            while (count > 0 && interestedPeers.size() > 1){
+                count--;
+
+                temp = interestedPeers.peek();
+
+                if (InDebug){
+
+                    if (lastVal < temp.Val){
+                        System.out.println("Bug in Preferred neighbour selection.");
+                    }
+
+                    lastVal = temp.Val;
+                }
+
+                if (temp.Peer.IsChocked.get()) {
+                    temp.Peer.IsChocked.set(false);
+                    temp.Peer.SendChokeInfo.set(true);
+                }
+
+                temp.Peer.ReceivedPiecesCount.set(0);
+
+                interestedPeers.remove(temp);
+            }
+        }
+
+        // mark all the remaining as chocked
+        while (interestedPeers.size() > 1){
+            temp = interestedPeers.peek();
+
+            if (InDebug){
+                if (lastVal < temp.Val){
+                    System.out.println("Bug in Preferred neighbour selection.");
+                }
+                lastVal = temp.Val;
+            }
+
+            if (!temp.Peer.IsChocked.get()) {
+
+                // as the peer was not selected choke the same and inform
+                temp.Peer.IsChocked.set(true);
+                temp.Peer.SendChokeInfo.set(true);
+            }
+
+            interestedPeers.remove(temp);
+        }
+    }
+
+    private void SelectOptimisticNode ()
+    {
+        int                     randomPos;
+        Set<Integer>            keySet;
+        PeerConfigurationData   peer;
+        int                     retryCount = 0;
+
+        if (OptUnchokedPeerId > 0)
+            PeerMap.get(OptUnchokedPeerId).IsChocked.set(true);
+        
+        while (true){
+
+            retryCount++;
+
+            randomPos = (int)Math.random()*PeerMap.size();
+
+            keySet = PeerMap.keySet();
+
+            peer = PeerMap.get(keySet.toArray()[randomPos]);
+
+            // cannot select only interested and chocked neighbours
+            // note : the retry count is provided in case all the nodes are un-chocked due to defined configurations
+            if (peer.IsInterested.get() && !peer.IsChocked.get() && peer.PeerId != MyPeerId)
+                break;
+            else if (retryCount > PeerMap.size()){
+                peer = null;
+                break;
+            }
+        }
+
+        //TODO Do something with the selected peer
+        if (peer != null) {
+
+            if (peer.PeerId != OptUnchokedPeerId) {
+                OptUnchokedPeerId = peer.PeerId;
+                peer.SendChokeInfo.set(true);
+            }
+
+            peer.IsChocked.set(false);
+
+        } else
+            OptUnchokedPeerId = -1;
+    }
+
+    private void MakeChokeRelatedAmends ()
+    {
+
+        if (LastChokeUpdateTime - Calendar.getInstance().getTimeInMillis() >= UnchockingInterval)
+            DoUnChokedNodeReselection ();
+
+        if (LastOptimisticUnchokingIntervalUpdateTime - Calendar.getInstance().getTimeInMillis() >= OptimisticUnchokingInterval)
+            SelectOptimisticNode ();
+    }
+
     /**
      * Initiates all the helping threads needed by the application
      *
@@ -349,7 +524,7 @@ public class peerProcess {
         while (true){
 
             try {
-                Thread.sleep(2000);
+                Thread.sleep(1000);
             }
             catch (InterruptedException ex) {
                 System.out.println ("*******************EXCEPTION*******************");
@@ -361,6 +536,8 @@ public class peerProcess {
                 TaskComplete.set (true);
                 break;
             }
+
+            MakeChokeRelatedAmends ();
         }
     }
 

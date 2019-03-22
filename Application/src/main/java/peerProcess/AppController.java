@@ -1,8 +1,6 @@
 package peerProcess;
 
-import java.io.IOException;
-import java.io.ObjectInputStream;
-import java.io.ObjectOutputStream;
+import java.io.*;
 import java.net.Socket;
 import java.util.ArrayList;
 import java.util.Calendar;
@@ -10,6 +8,7 @@ import java.util.Calendar;
 public class AppController extends Thread {
 
     private Socket                      ConnSocket;
+    private RandomAccessFile            DatFile;
     private int                         RequestedPieceId;
     private int                         PeerId;
     private int                         ClientPeerId;
@@ -38,6 +37,13 @@ public class AppController extends Thread {
         HaveBroadcastList= pHaveBroadcastList;
         LastBroadcastData= pHaveBroadcastList.GetLast();
         RequestedPieceId = -1;
+
+        try {
+            DatFile = new RandomAccessFile(new java.io.File(peerProcess.FileName), "rw");
+        } catch (FileNotFoundException ex){
+            System.out.println("Failed to open data file for IO.");
+            DatFile = null;
+        }
     }
 
     /**
@@ -298,15 +304,15 @@ public class AppController extends Thread {
 
         try {
 
-            peerProcess.DatFile.seek(pPieceId*peerProcess.PieceSize);
-            bytesRead  = peerProcess.DatFile.read(data, 0, peerProcess.PieceSize);
+            DatFile.seek(pPieceId*peerProcess.PieceSize);
+            bytesRead  = DatFile.read(data, 0, peerProcess.PieceSize);
 
             if (bytesRead < peerProcess.PieceSize){
 
                 data = new byte[bytesRead];
 
-                peerProcess.DatFile.seek(pPieceId*peerProcess.PieceSize);
-                bytesRead  = peerProcess.DatFile.read(data, 0, bytesRead);
+                DatFile.seek(pPieceId*peerProcess.PieceSize);
+                bytesRead  = DatFile.read(data, 0, bytesRead);
             }
         } catch (IOException ex){
             return eSocketReturns.E_SOCRET_IO_EXCEPTION;
@@ -388,10 +394,10 @@ public class AppController extends Thread {
 
         list = GetInterestingBitsetList(true);
 
-        if (list.size() > 0)
-            return true;
+        if (list.size() < 1)
+            return false;
 
-        return false;
+        return true;
     }
 
     private eSocketReturns SendInterestedMsg(){
@@ -446,8 +452,8 @@ public class AppController extends Thread {
         Logger.GetLogger().Log(Calendar.getInstance().getTime().toString() + ": Peer " + PeerId + " has downloaded the piece " + pMsg.PieceId + " from  " + ClientPeerId + ". Now the number of pieces it has is " + ++(SelfData.NumPiecesAvailable));
 
         try {
-            peerProcess.DatFile.seek(pMsg.PieceId * peerProcess.PieceSize);
-            peerProcess.DatFile.write(pMsg.GetPieceData());
+            DatFile.seek(pMsg.PieceId * peerProcess.PieceSize);
+            DatFile.write(pMsg.GetPieceData());
         } catch (IOException ex){
             return eSocketReturns.E_SOCRET_IO_EXCEPTION;
         }
@@ -494,10 +500,10 @@ public class AppController extends Thread {
         if (pMsg.PieceId < 0)
             return PrintErrorMessageToConsole("Piece Request With Invalid Content");
 
-        // update the client piece bit for the given piece ID the operation is safe as no other thread will touch this data apart from this
+        // BUG update the client piece bit for the given piece ID the operation is safe as no other thread will touch this data apart from this
         ClientData.FileState.set (pMsg.PieceId/peerProcess.BitPerBufVal, ClientData.FileState.get(pMsg.PieceId/peerProcess.BitPerBufVal) | (1 << (peerProcess.BitPerBufVal - (pMsg.PieceId%peerProcess.BitPerBufVal) - 1)));
 
-        // the number of pieces with the client has increased by 1
+        // BUG the number of pieces with the client has increased by 1
         ClientData.NumPiecesAvailable++;
 
         // log the message as per specification
@@ -551,6 +557,8 @@ public class AppController extends Thread {
         // log the message as per specification
         Logger.GetLogger().Log(Calendar.getInstance().getTime().toString() + ": Peer " + PeerId + " received the 'interested’ message from " + ClientPeerId + ".");
 
+        ClientData.IsInterested.set(false);
+
         return eSocketReturns.E_SOCRET_SUCCESS;
     }
 
@@ -558,6 +566,8 @@ public class AppController extends Thread {
 
         // log the message as per specification
         Logger.GetLogger().Log(Calendar.getInstance().getTime().toString() + ": Peer " + PeerId + " received the 'not interested’ message from " + ClientPeerId + ".");
+
+        ClientData.IsInterested.set(true);
 
         return eSocketReturns.E_SOCRET_SUCCESS;
     }
