@@ -419,6 +419,7 @@ public class peerProcess {
         if (interestedPeers.size() > 0){
 
             int count = PreferredNeighbourCount;
+            String  neighbour = new String("");
 
             while (count > 0 && interestedPeers.size() > 0){
 
@@ -440,10 +441,17 @@ public class peerProcess {
                     temp.Peer.SendChokeInfo.set(true);
                 }
 
+                if (neighbour.length() > 0)
+                    neighbour = neighbour + ", ";
+
+                neighbour = neighbour + temp.Peer.PeerId.toString();
+
                 temp.Peer.ReceivedPiecesCount.set(0);
 
                 interestedPeers.remove(temp);
             }
+
+            Logger.GetLogger().Log(Calendar.getInstance().getTime().toString() + " Peer " + MyPeerId + " has the preferred neighbors " + neighbour  + ".");
         }
 
         // mark all the remaining as chocked
@@ -503,6 +511,8 @@ public class peerProcess {
         if (peer != null) {
 
             if (OptUnchokedPeerId != peer.PeerId ) {
+
+                Logger.GetLogger().Log(Calendar.getInstance().getTime().toString() + " Peer " + MyPeerId + " has the optimistically unchoked neighbor " + peer.PeerId.toString() + ".");
 
                 if (OptUnchokedPeerId >= 0) {
                     PeerMap.get(OptUnchokedPeerId).IsChocked.set(true);

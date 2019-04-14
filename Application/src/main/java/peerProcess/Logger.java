@@ -287,7 +287,7 @@ public class Logger {
             // must not allow file write in parallel
             gMutexlock.acquire();
             vFile.write(pLogMessage.getBytes());
-            System.out.println(pLogMessage);
+            //System.out.println(pLogMessage);
             gMutexlock.release();
         }
         catch (IOException | InterruptedException e){

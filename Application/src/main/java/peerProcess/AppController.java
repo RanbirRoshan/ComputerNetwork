@@ -118,11 +118,11 @@ public class AppController extends Thread {
             if (ret != eSocketReturns.E_SOCRET_SUCCESS)
                 return ret;
 
-            try {
+            /*try {
                 Thread.sleep(10);
             }catch (Exception e){
                 System.out.println("Exception" + e.getMessage());
-            }
+            }*/
         } while (true);
 
         // return eSocketReturns.E_SOCRET_SUCCESS;
@@ -554,6 +554,7 @@ public class AppController extends Thread {
 
         if (ret.Response.OperationType == eOperationType.OPERATION_UNCHOKE.GetVal()) {
             ClientData.IsChokedByPeer = false;
+            Logger.GetLogger().Log(Calendar.getInstance().getTime().toString() + " Peer " + SelfData.PeerId + " is unchoked by " + ClientData.PeerId +".");
             return eSocketReturns.E_SOCRET_SUCCESS;
         }
 
@@ -575,7 +576,7 @@ public class AppController extends Thread {
 
         // log the message as per specification
         Logger.GetLogger().Log(Calendar.getInstance().getTime().toString() + ": Peer " + PeerId
-                + " received the 'interested’ message from " + ClientPeerId + ".");
+                + " received the 'interested' message from " + ClientPeerId + ".");
 
         ClientData.IsInterested.set(true);
 
@@ -598,6 +599,8 @@ public class AppController extends Thread {
 
             RequestedPieceId = -1;
         }
+
+        Logger.GetLogger().Log(Calendar.getInstance().getTime().toString() + " Peer " + SelfData.PeerId + " is choked by " + ClientData.PeerId +".");
 
         return eSocketReturns.E_SOCRET_SUCCESS;
     }
