@@ -104,6 +104,8 @@ public class AppController extends Thread {
     private eSocketReturns PerformFileOp() {
         eSocketReturns ret;
 
+
+
         // perform send receive activity
         do {
 
@@ -583,7 +585,7 @@ public class AppController extends Thread {
 
     private eSocketReturns ProcessChoke(boolean pChocked) {
 
-        ClientData.IsChokedByPeer = true;
+        ClientData.IsChokedByPeer = pChocked;
 
         if (RequestedPieceId >= 0) {
             int index = (int) (RequestedPieceId / peerProcess.BitPerBufVal);

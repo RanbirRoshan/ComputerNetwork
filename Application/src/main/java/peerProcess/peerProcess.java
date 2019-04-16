@@ -50,12 +50,12 @@ public class peerProcess {
         boolean HasFile;
         boolean HasFullFile;
         AtomicIntegerArray FileState = null;
-        AtomicBoolean IsChocked = new AtomicBoolean();
-        AtomicBoolean SendChokeInfo = new AtomicBoolean();
+        AtomicBoolean IsChocked = new AtomicBoolean(true);
+        AtomicBoolean SendChokeInfo = new AtomicBoolean(false);
         AtomicBoolean IsInterested = new AtomicBoolean(false);
         AtomicIntegerArray RequestedFileState = null;
         AtomicInteger ReceivedPiecesCount = new AtomicInteger(0);
-        Boolean IsChokedByPeer = false;
+        Boolean IsChokedByPeer = true;
     }
 
     private peerProcess(int pPeerId) {
@@ -220,7 +220,7 @@ public class peerProcess {
                 // the application assumes the client to be un-interested until explicitly
                 // informed
                 if (peerData.PeerId != MyPeerId)
-                    peerData.IsInterested.set(true);
+                    peerData.IsInterested.set(false);
 
                 // by default the client is choked until determined otherwise
                 peerData.IsChocked.set(true);
