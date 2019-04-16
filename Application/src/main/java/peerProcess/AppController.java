@@ -78,6 +78,8 @@ public class AppController extends Thread {
                 return;
             }
 
+            ClientData = peerProcess.PeerMap.get(ClientPeerId);
+
             // handshake is always followed by BitSetExchange
             if (PerformBitSetExchange() != eSocketReturns.E_SOCRET_SUCCESS) {
                 Logger.GetLogger().Log(Calendar.getInstance().getTime().toString() + ": " + PeerId
@@ -808,8 +810,6 @@ public class AppController extends Thread {
         // not thaw we have verified the message to be of right type we can cast it into
         // our actual message structure
         bitFieldMsg = (BitFieldMessage) out.Response;*/
-
-        ClientData = peerProcess.PeerMap.get(ClientPeerId);
 
         // the bit field file sate length should be same as the file iis same for all if
         // they are not same we have some error in the system

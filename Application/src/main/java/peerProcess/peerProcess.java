@@ -119,12 +119,6 @@ public class peerProcess {
             return false;
         }
 
-        if (CheckFileIsMissing(FileName)) {
-
-            System.out.println("The file: \"" + FileName + "\" specified in the configuration does not exists.");
-            return false;
-        }
-
         try {
             DatFile = new RandomAccessFile(new java.io.File(FileName), "rw");
         } catch (FileNotFoundException ex) {
