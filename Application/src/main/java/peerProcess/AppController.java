@@ -454,7 +454,12 @@ public class AppController extends Thread {
             updatedval = originalval | (1 << (peerProcess.BitPerBufVal - (pMsg.PieceId % peerProcess.BitPerBufVal) - 1));
         } while (!SelfData.FileState.compareAndSet(pMsg.PieceId / peerProcess.BitPerBufVal, originalval, updatedval));
 
+        int initial, changed;
         // DebugState (pMsg.PieceId, false);
+        do {
+            initial = SelfData.ReceivedPiecesCount.get();
+            changed = initial + 1;
+        } while (!SelfData.ReceivedPiecesCount.compareAndSet(initial, changed));
 
         return ProcessPeerInterestState();
     }
@@ -537,6 +542,9 @@ public class AppController extends Thread {
             return ret.Error;
 
         // handling the client data by operation type
+        if(ret.Response.OperationType == eOperationType.OPERATION_BITFIELD.GetVal())
+            return ProcessBitSetResponse((BitFieldMessage) ret.Response);
+
         if (ret.Response.OperationType == eOperationType.OPERATION_PIECE.GetVal())
             return ProcessPieceResponse((PieceMessage) ret.Response);
 
@@ -780,11 +788,11 @@ public class AppController extends Thread {
      *
      * @return returns the status for the requested operation
      */
-    private eSocketReturns ProcessBitSetResponse() {
+    private eSocketReturns ProcessBitSetResponse(BitFieldMessage pMsg) {
 
         BitFieldMessage bitFieldMsg;
         ResponseOutput out;
-
+/*
         do {
             out = ReceiveObj("IOException occurred while de-serializing BitField message.");
         } while (out.Error == eSocketReturns.E_SOCRET_NOTHING_TO_READ);
@@ -799,18 +807,17 @@ public class AppController extends Thread {
 
         // not thaw we have verified the message to be of right type we can cast it into
         // our actual message structure
-        bitFieldMsg = (BitFieldMessage) out.Response;
+        bitFieldMsg = (BitFieldMessage) out.Response;*/
 
         ClientData = peerProcess.PeerMap.get(ClientPeerId);
 
         // the bit field file sate length should be same as the file iis same for all if
         // they are not same we have some error in the system
-        if (bitFieldMsg.BitField.length() != ClientData.FileState.length())
-            return PrintErrorMessageToConsole("Error in BitField message exchange received Operation Type: "
-                    + out.Response.OperationType + " when expecting :" + eOperationType.OPERATION_BITFIELD);
+        if (pMsg.BitField.length() != ClientData.FileState.length())
+            return PrintErrorMessageToConsole("Error bitfield length mismatch");
 
         // overwrite the current client file state info with the latest available info
-        ClientData.FileState = bitFieldMsg.BitField;
+        ClientData.FileState = pMsg.BitField;
 
         for (int iter = 0; iter < ClientData.FileState.length(); iter++) {
             // count the number of packets the client already has
@@ -831,13 +838,27 @@ public class AppController extends Thread {
      */
     private eSocketReturns PerformBitSetExchange() {
 
-        eSocketReturns ret;
-
-        BitFieldMessage msg = new BitFieldMessage();
-
         // recording the current end broadcast element as the current client needs data
         // only beyond this
         LastBroadcastData = HaveBroadcastList.GetLast();
+
+        boolean nothingToShare = true;
+
+        for (int iter = SelfData.FileState.length() - 1; iter >= 0 ; iter--)
+        {
+            if (SelfData.FileState.get(iter) != 0)
+            {
+                nothingToShare = false;
+                break;
+            }
+        }
+
+        if (nothingToShare)
+            return eSocketReturns.E_SOCRET_SUCCESS;
+
+        eSocketReturns ret;
+
+        BitFieldMessage msg = new BitFieldMessage();
 
         msg.SetBitFieldInfo(peerProcess.PeerMap.get(PeerId).FileState);
 
@@ -845,8 +866,7 @@ public class AppController extends Thread {
 
         // if the bitField were sent successfully wait and process the clients response
         // BitFields
-        if (ret == eSocketReturns.E_SOCRET_SUCCESS)
-            return ProcessBitSetResponse();
+        //if (ret == eSocketReturns.E_SOCRET_SUCCESS)
 
         return ret;
     }
