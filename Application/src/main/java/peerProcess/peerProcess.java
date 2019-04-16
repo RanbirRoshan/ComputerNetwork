@@ -411,6 +411,8 @@ public class peerProcess {
                     mapPair.getValue().IsChocked.set(true);
                     // its our responsibility to inform them
                     mapPair.getValue().SendChokeInfo.set(true);
+
+                    mapPair.getValue().ReceivedPiecesCount.set(0);
                 }
             }
         }

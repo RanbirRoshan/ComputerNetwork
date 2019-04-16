@@ -291,7 +291,7 @@ public class AppController extends Thread {
         msg.PieceId = pPieceId;
 
         if (ClientData.IsChocked.get()) {
-            sendChokeInfo();
+            //sendChokeInfo();
             return eSocketReturns.E_SOCRET_SUCCESS;
         }
 
@@ -415,8 +415,10 @@ public class AppController extends Thread {
         if (pMsg.PieceId != RequestedPieceId) {
             RequestedPieceId = -1;
             // Requested piece id is reset so that the application can continue to work
-            return PrintErrorMessageToConsole(
+            PrintErrorMessageToConsole(
                     "The piece requested was: " + RequestedPieceId + ". The received piece is: " + pMsg.PieceId + ".");
+
+            return eSocketReturns.E_SOCRET_SUCCESS;
         }
 
         RequestedPieceId = -1;
@@ -548,15 +550,11 @@ public class AppController extends Thread {
         if (ret.Response.OperationType == eOperationType.OPERATION_INTERESTED.GetVal())
             return ProcessInterestingRequest((Message) ret.Response);
 
-        if (ret.Response.OperationType == eOperationType.OPERATION_CHOKE.GetVal()) {
-            return ProcessChoke();
-        }
+        if (ret.Response.OperationType == eOperationType.OPERATION_CHOKE.GetVal())
+            return ProcessChoke(true);
 
-        if (ret.Response.OperationType == eOperationType.OPERATION_UNCHOKE.GetVal()) {
-            ClientData.IsChokedByPeer = false;
-            Logger.GetLogger().Log(Calendar.getInstance().getTime().toString() + " Peer " + SelfData.PeerId + " is unchoked by " + ClientData.PeerId +".");
-            return eSocketReturns.E_SOCRET_SUCCESS;
-        }
+        if (ret.Response.OperationType == eOperationType.OPERATION_UNCHOKE.GetVal())
+            return ProcessChoke(false);
 
         return eSocketReturns.E_SOCRET_FAILED;
     }
@@ -583,7 +581,8 @@ public class AppController extends Thread {
         return eSocketReturns.E_SOCRET_SUCCESS;
     }
 
-    private eSocketReturns ProcessChoke() {
+    private eSocketReturns ProcessChoke(boolean pChocked) {
+
         ClientData.IsChokedByPeer = true;
 
         if (RequestedPieceId >= 0) {
@@ -600,7 +599,10 @@ public class AppController extends Thread {
             RequestedPieceId = -1;
         }
 
-        Logger.GetLogger().Log(Calendar.getInstance().getTime().toString() + " Peer " + SelfData.PeerId + " is choked by " + ClientData.PeerId +".");
+        if (pChocked)
+            Logger.GetLogger().Log(Calendar.getInstance().getTime().toString() + " Peer " + SelfData.PeerId + " is choked by " + ClientData.PeerId +".");
+        else
+            Logger.GetLogger().Log(Calendar.getInstance().getTime().toString() + " Peer " + SelfData.PeerId + " is unchoked by " + ClientData.PeerId +".");
 
         return eSocketReturns.E_SOCRET_SUCCESS;
     }
