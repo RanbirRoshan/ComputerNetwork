@@ -41,7 +41,7 @@ public class AppController extends Thread {
         try {
             DatFile = new RandomAccessFile(new java.io.File(peerProcess.FileName), "rw");
         } catch (FileNotFoundException ex) {
-            System.out.println("Failed to open data file for IO.");
+            //System.out.println("Failed to open data file for IO.");
             DatFile = null;
         }
     }
@@ -56,11 +56,11 @@ public class AppController extends Thread {
 
         // debug helper
         if (!ConnSocket.isConnected()) {
-            System.out.println("A connection is not successful.");
+            //System.out.println("A connection is not successful.");
             return;
         }
 
-        System.out.println("A connection is successfully established.");
+        //System.out.println("A connection is successfully established.");
 
         try {
 
@@ -98,8 +98,8 @@ public class AppController extends Thread {
 
             ConnSocket.close();
         } catch (IOException | InterruptedException ex) {
-            System.out.println("Unable to set keep alive on socket.");
-            System.out.println(ex.getMessage());
+            //System.out.println("Unable to set keep alive on socket.");
+            //System.out.println(ex.getMessage());
         }
     }
 
@@ -125,7 +125,7 @@ public class AppController extends Thread {
             /*try {
                 Thread.sleep(10);
             }catch (Exception e){
-                System.out.println("Exception" + e.getMessage());
+                //System.out.println("Exception" + e.getMessage());
             }*/
         } while (true);
 
@@ -208,9 +208,9 @@ public class AppController extends Thread {
             SocketOutStream.writeObject(pObj);
             SocketOutStream.flush();
         } catch (IOException ex) {
-            System.out.println(pFailureMsg);
-            System.out.println("*******************EXCEPTION*******************");
-            System.out.println(ex.getMessage());
+            //System.out.println(pFailureMsg);
+            //System.out.println("*******************EXCEPTION*******************");
+            //System.out.println(ex.getMessage());
             return eSocketReturns.E_SOCRET_IO_EXCEPTION;
         }
 
@@ -240,9 +240,9 @@ public class AppController extends Thread {
                 out.Response = null;
             }
         } catch (ClassNotFoundException | IOException ex) {
-            System.out.println("*******************EXCEPTION*******************");
-            System.out.println(pFailureMsg);
-            System.out.println(ex.getMessage());
+            //System.out.println("*******************EXCEPTION*******************");
+            //System.out.println(pFailureMsg);
+            //System.out.println(ex.getMessage());
             out.Response = null;
             out.Error = eSocketReturns.E_SOCRET_IO_EXCEPTION;
         }
@@ -346,7 +346,7 @@ public class AppController extends Thread {
     /*
      * static ArrayList a = new ArrayList(); private void DebugState(int
      * newDownloadId, boolean pPreAddCheck) { if (a.contains(newDownloadId)){
-     * System.out.println("Fuck Off"); } if (pPreAddCheck == false)
+     * //System.out.println("Fuck Off"); } if (pPreAddCheck == false)
      * a.add(newDownloadId);
      * 
      * if (pPreAddCheck){ int num = newDownloadId; int index =
@@ -490,8 +490,8 @@ public class AppController extends Thread {
      * @return Always returns E_SOCRET_FAILED
      */
     private eSocketReturns PrintErrorMessageToConsole(String pErrorMsg) {
-        System.out.println("*******************Error*******************");
-        System.out.println(pErrorMsg);
+        //System.out.println("*******************Error*******************");
+        //System.out.println(pErrorMsg);
         return eSocketReturns.E_SOCRET_FAILED;
     }
 
@@ -902,9 +902,9 @@ public class AppController extends Thread {
             SocketInputStream.readByte();
             msg = (HandshakeMsg) SocketInputStream.readObject();
         } catch (IOException | ClassNotFoundException ex) {
-            System.out.println("*******************EXCEPTION*******************");
-            System.out.println("IOException occurred while de-serializing handshake message.");
-            System.out.println(ex.getMessage());
+            //System.out.println("*******************EXCEPTION*******************");
+            //System.out.println("IOException occurred while de-serializing handshake message.");
+            //System.out.println(ex.getMessage());
             return eSocketReturns.E_SOCRET_IO_EXCEPTION;
         }
 

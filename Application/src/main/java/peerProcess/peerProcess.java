@@ -104,8 +104,8 @@ public class peerProcess {
     private static boolean CheckFileIsMissing(String pFileName) {
 
         if (Files.notExists(Paths.get(pFileName))) {
-            System.out.println("Missing file: \"" + pFileName + "\" at location: \""
-                    + Paths.get(".").toAbsolutePath().toString() + "\"");
+            //System.out.println("Missing file: \"" + pFileName + "\" at location: \""
+            //        + Paths.get(".").toAbsolutePath().toString() + "\"");
             return true;
         }
 
@@ -117,7 +117,7 @@ public class peerProcess {
         if (PreferredNeighbourCount < 1 || UnchockingInterval < 1 || OptimisticUnchokingInterval < 1 || FileSize < 1
                 || PieceSize < 1) {
 
-            System.out.println("One of the configuration is file \"" + ConfigFileName + "\" is incorrect.");
+            //System.out.println("One of the configuration is file \"" + ConfigFileName + "\" is incorrect.");
             return false;
         }
 
@@ -125,13 +125,13 @@ public class peerProcess {
             DatFile = new RandomAccessFile(new java.io.File(FileName), "rw");
         } catch (FileNotFoundException ex) {
 
-            System.out.println("Failed to open data file for IO.");
+            //System.out.println("Failed to open data file for IO.");
             return false;
         }
         /*
          * if (Files.size(Paths.get(FileName)) != FileSize){
          * 
-         * System.out.println
+         * //System.out.println
          * ("The file size specified in configuration and size of actual file does not match."
          * ); return false; }
          */
@@ -179,13 +179,13 @@ public class peerProcess {
                     break;
 
                 default:
-                    System.out.println("Invalid configuration value: " + configLabel);
+                    //System.out.println("Invalid configuration value: " + configLabel);
                     return false;
                 }
             }
         } catch (IOException ex) {
-            System.out.println("Unable to open configuration file : \"" + ConfigFileName + "\".");
-            System.out.println(ex.getMessage());
+            //System.out.println("Unable to open configuration file : \"" + ConfigFileName + "\".");
+            //System.out.println(ex.getMessage());
             return false;
         }
 
@@ -269,8 +269,8 @@ public class peerProcess {
                 PeerMap.put(peerData.PeerId, peerData);
             }
         } catch (IOException ex) {
-            System.out.println("Unable to open the configuration file: \"" + PeerInfoFile + "\".");
-            System.out.println(ex.getMessage());
+            //System.out.println("Unable to open the configuration file: \"" + PeerInfoFile + "\".");
+            //System.out.println(ex.getMessage());
             return false;
         }
 
@@ -361,9 +361,9 @@ public class peerProcess {
 
                 newThread.start();
             } catch (IOException ex) {
-                System.out.println("*******************EXCEPTION*******************");
-                System.out.println("IOException occurred while creating socket.");
-                System.out.println(ex.getMessage());
+                //System.out.println("*******************EXCEPTION*******************");
+                //System.out.println("IOException occurred while creating socket.");
+                //System.out.println(ex.getMessage());
             }
 
         }
@@ -434,7 +434,7 @@ public class peerProcess {
                 if (InDebug) {
 
                     if (lastVal < temp.Val) {
-                        System.out.println("Bug in Preferred neighbour selection.");
+                        //System.out.println("Bug in Preferred neighbour selection.");
                     }
 
                     lastVal = temp.Val;
@@ -467,7 +467,7 @@ public class peerProcess {
 
             if (InDebug) {
                 if (lastVal < temp.Val) {
-                    System.out.println("Bug in Preferred neighbour selection.");
+                    //System.out.println("Bug in Preferred neighbour selection.");
                 }
                 lastVal = temp.Val;
             }
@@ -566,9 +566,9 @@ public class peerProcess {
             try {
                 Thread.sleep(1000);
             } catch (InterruptedException ex) {
-                System.out.println("*******************EXCEPTION*******************");
-                System.out.println("IOException occurred while checking for task completion.");
-                System.out.println(ex.getMessage());
+                //System.out.println("*******************EXCEPTION*******************");
+                //System.out.println("IOException occurred while checking for task completion.");
+                //System.out.println(ex.getMessage());
             }
 
             if (AllPeersHaveFile()) {
@@ -606,9 +606,9 @@ public class peerProcess {
                         noob.start();
                     }
                 } catch (IOException ex) {
-                    System.out.println("*******************EXCEPTION*******************");
-                    System.out.println("IOException occurred while closing a connection.");
-                    System.out.println(ex.getMessage());
+                    //System.out.println("*******************EXCEPTION*******************");
+                    //System.out.println("IOException occurred while closing a connection.");
+                    //System.out.println(ex.getMessage());
                 }
             }
         };
