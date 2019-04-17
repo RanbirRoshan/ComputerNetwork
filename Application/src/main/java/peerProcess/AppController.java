@@ -441,14 +441,11 @@ public class AppController extends Thread {
 
         RequestedPieceId = -1;
 
-        // The process just receive a piece/package this must be informed to all other
-        // online peers
-        HaveBroadcastList.AddForBroadcast(eOperationType.OPERATION_HAVE.GetVal(), pMsg.PieceId);
-
         do {
             originalval = SelfData.NumPiecesAvailable.get();
             updatedval = originalval + 1;
         }while(!SelfData.NumPiecesAvailable.compareAndSet(originalval,updatedval));
+
 
         // logging as per the specification
         Logger.GetLogger()
@@ -476,6 +473,10 @@ public class AppController extends Thread {
             initial = SelfData.ReceivedPiecesCount.get();
             changed = initial + 1;
         } while (!SelfData.ReceivedPiecesCount.compareAndSet(initial, changed));
+
+        // The process just receive a piece/package this must be informed to all other
+        // online peers
+        HaveBroadcastList.AddForBroadcast(eOperationType.OPERATION_HAVE.GetVal(), pMsg.PieceId);
 
         return ProcessPeerInterestState();
     }
