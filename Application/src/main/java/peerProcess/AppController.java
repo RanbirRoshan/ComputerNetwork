@@ -174,6 +174,8 @@ public class AppController extends Thread {
             LastBroadcastData = LastBroadcastData.Next;
         }
 
+        ClientData.LastData = LastBroadcastData;
+
         return ret;
     }
 
@@ -417,10 +419,22 @@ public class AppController extends Thread {
             return PrintErrorMessageToConsole("Piece Response With Invalid Content");
 
         if (pMsg.PieceId != RequestedPieceId) {
-            RequestedPieceId = -1;
             // Requested piece id is reset so that the application can continue to work
             PrintErrorMessageToConsole(
                     "The piece requested was: " + RequestedPieceId + ". The received piece is: " + pMsg.PieceId + ".");
+            if (RequestedPieceId >= 0) {
+                int index = (int) (RequestedPieceId / peerProcess.BitPerBufVal);
+                int pos = RequestedPieceId % peerProcess.BitPerBufVal;
+                int updateBit = ~(1 << (peerProcess.BitPerBufVal - 1 - pos));
+
+                int originalVal, newVal;
+                do {
+                    originalVal = SelfData.RequestedFileState.get(index);
+                    newVal = originalVal & updateBit;
+                } while (!SelfData.RequestedFileState.compareAndSet(index, originalVal, newVal));
+
+                RequestedPieceId = -1;
+            }
 
             return eSocketReturns.E_SOCRET_SUCCESS;
         }

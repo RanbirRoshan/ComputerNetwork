@@ -56,6 +56,8 @@ public class peerProcess {
         AtomicIntegerArray RequestedFileState = null;
         AtomicInteger ReceivedPiecesCount = new AtomicInteger(0);
         Boolean IsChokedByPeer = true;
+        BroadcastStructData LastData = null;
+        long LastChange = Calendar.getInstance().getTimeInMillis();
     }
 
     private peerProcess(int pPeerId) {
@@ -314,11 +316,14 @@ public class peerProcess {
     /**
      * The function checks if all the peers have got the full file
      *
-     * @return true if all peers have full file, else false
+     * @return true if all peers have full file, else falseq
      */
     private boolean AllPeersHaveFile() {
 
         for (Map.Entry<Integer, PeerConfigurationData> mapPair : PeerMap.entrySet()) {
+
+            if (mapPair.getValue().LastData != HaveBroadCastList.GetLast() && mapPair.getValue().PeerId != MyPeerId)
+                return false;
 
             // if any of the peer does not have full file return false
             for (int iter = mapPair.getValue().FileState.length() - 1; iter >= 0; iter--) {
@@ -388,7 +393,8 @@ public class peerProcess {
         for (Map.Entry<Integer, PeerConfigurationData> mapPair : PeerMap.entrySet()) {
 
             if (mapPair.getValue().IsInterested.get() && mapPair.getValue().PeerId != OptUnchokedPeerId
-                    && mapPair.getValue().PeerId != MyPeerId) {
+                    && mapPair.getValue().PeerId != MyPeerId && !mapPair.getValue().SendChokeInfo.get() &&
+                    (Calendar.getInstance().getTimeInMillis() - mapPair.getValue().LastChange) > 500) {
 
                 QueueData data = new QueueData();
 
@@ -407,6 +413,8 @@ public class peerProcess {
                     mapPair.getValue().SendChokeInfo.set(true);
 
                     mapPair.getValue().ReceivedPiecesCount.set(0);
+
+                    mapPair.getValue().LastChange = Calendar.getInstance().getTimeInMillis();
                 }
             }
         }
@@ -435,6 +443,8 @@ public class peerProcess {
                 if (temp.Peer.IsChocked.get()) {
                     temp.Peer.IsChocked.set(false);
                     temp.Peer.SendChokeInfo.set(true);
+
+                    temp.Peer.LastChange = Calendar.getInstance().getTimeInMillis();
                 }
 
                 if (neighbour.length() > 0)
@@ -467,6 +477,7 @@ public class peerProcess {
                 // as the peer was not selected choke the same and inform
                 temp.Peer.IsChocked.set(true);
                 temp.Peer.SendChokeInfo.set(true);
+                temp.Peer.LastChange = Calendar.getInstance().getTimeInMillis();
             }
 
             interestedPeers.remove(temp);
@@ -495,7 +506,8 @@ public class peerProcess {
 
             // cannot select only interested and chocked neighbours
             // note : the retry count is provided in case all the nodes are un-chocked due to defined configurations
-            if (peer.IsInterested.get() && peer.IsChocked.get() && peer.PeerId != MyPeerId)
+            if (peer.IsInterested.get() && peer.IsChocked.get() && peer.PeerId != MyPeerId && !peer.SendChokeInfo.get()&&
+                    (Calendar.getInstance().getTimeInMillis() - peer.LastChange) > 500)
                 break;
             else if (retryCount > PeerMap.size()) {
                 peer = null;
@@ -513,12 +525,14 @@ public class peerProcess {
                 if (OptUnchokedPeerId >= 0) {
                     PeerMap.get(OptUnchokedPeerId).IsChocked.set(true);
                     PeerMap.get(OptUnchokedPeerId).SendChokeInfo.set(true);
+                    PeerMap.get(OptUnchokedPeerId).LastChange = Calendar.getInstance().getTimeInMillis();
                 }
 
                 OptUnchokedPeerId = peer.PeerId;
 
                 peer.IsChocked.set(false);
                 peer.SendChokeInfo.set(true);
+                peer.LastChange = Calendar.getInstance().getTimeInMillis();
             }
 
         } else
@@ -612,5 +626,12 @@ public class peerProcess {
 
         // wait till the task is actually completed i.e all peers have full file
         InitiateCompletionWait();
+
+
+        try {
+            Thread.sleep(10000);
+        }catch (Exception e){
+
+        }
     }
 }
